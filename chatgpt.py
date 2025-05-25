@@ -47,9 +47,29 @@ if st.button("Ask"):
                     store=True
                 )
                 # Display the model's response
+                # Parse the output to extract the text
+                output_text = None
                 if hasattr(response, 'output') and response.output:
+                    # If output is a list of objects, extract the text from the first one
+                    if isinstance(response.output, list) and len(response.output) > 0:
+                        first = response.output[0]
+                        # Try to extract text from known structure
+                        if hasattr(first, 'content') and isinstance(first.content, list) and len(first.content) > 0:
+                            content_item = first.content[0]
+                            if hasattr(content_item, 'text'):
+                                output_text = content_item.text
+                            elif isinstance(content_item, dict) and 'text' in content_item:
+                                output_text = content_item['text']
+                        elif hasattr(first, 'text'):
+                            output_text = first.text
+                        elif isinstance(first, dict) and 'text' in first:
+                            output_text = first['text']
+                        else:
+                            output_text = str(first)
+                    else:
+                        output_text = str(response.output)
                     st.subheader("Model Response:")
-                    st.write(response.output)
+                    st.write(output_text)
                 else:
                     st.write("Sorry, no response from the model.")
             except Exception as e:
