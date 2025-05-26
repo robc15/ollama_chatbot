@@ -155,14 +155,22 @@ if uploaded_file is not None:
     elif file_type.startswith("image"):
         # Upload image to OpenAI and get file_id
         try:
-            with open("temp_image", "wb") as f:
-                f.write(uploaded_file.read())
-            file = client.files.create(
-                file=open("temp_image", "rb"),
-                purpose="vision"
-            )
-            file_id = file.id
-            st.success("Image uploaded to OpenAI for analysis.")
+            # Get the file extension for correct file type
+            import os as _os
+            ext = _os.path.splitext(uploaded_file.name)[1].lower()
+            valid_exts = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+            if ext not in valid_exts:
+                st.error(f"Unsupported image format: {ext}. Please upload a PNG, JPG, JPEG, GIF, or WEBP file.")
+            else:
+                temp_path = f"temp_image{ext}"
+                with open(temp_path, "wb") as f:
+                    f.write(uploaded_file.read())
+                file = client.files.create(
+                    file=open(temp_path, "rb"),
+                    purpose="vision"
+                )
+                file_id = file.id
+                st.success(f"Image ({ext}) uploaded to OpenAI for analysis.")
         except Exception as e:
             st.error(f"Could not upload image: {e}")
     else:
