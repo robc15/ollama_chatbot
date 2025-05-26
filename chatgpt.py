@@ -255,7 +255,7 @@ if st.button("Ask"):
                 if selected_model["id"] == "llama3":
                     import subprocess
                     result = subprocess.run(
-                        ["olloma", "run", "llama3:latest"],
+                        ["ollama", "run", "llama3:latest"],
                         input=user_input,
                         capture_output=True,
                         text=True
