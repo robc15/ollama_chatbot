@@ -187,15 +187,34 @@ def fetch_organization_metric(url, headers, value_key=None):
             for result in bucket.get("results", []):
                 if value_key == "cost":
                     # For costs, sum result["amount"]["value"]
-                    amount = result.get("amount", {}).get("value", 0)
-                    total += amount
+                    amount_obj = result.get("amount", {})
+                    value = amount_obj.get("value", 0)
+                    total += value
+                    if value == 0 and result and len(st.session_state.diagnostic_api_data) < 5:
+                        st.session_state.diagnostic_api_data.append({
+                            "value_key": value_key,
+                            "raw_result": dict(result)
+                        })
                 elif value_key == "completions":
                     # For completions, sum input_tokens and output_tokens
-                    total_input_tokens += result.get("input_tokens", 0)
-                    total_output_tokens += result.get("output_tokens", 0)
+                    current_input_tokens = result.get("input_tokens", 0)
+                    current_output_tokens = result.get("output_tokens", 0)
+                    total_input_tokens += current_input_tokens
+                    total_output_tokens += current_output_tokens
+                    if current_input_tokens == 0 and current_output_tokens == 0 and result and len(st.session_state.diagnostic_api_data) < 5:
+                        st.session_state.diagnostic_api_data.append({
+                            "value_key": value_key,
+                            "raw_result": dict(result)
+                        })
                 else:
                     # For other usage, sum result[value_key]
-                    total += result.get(value_key, 0)
+                    value = result.get(value_key, 0)
+                    total += value
+                    if value == 0 and result and len(st.session_state.diagnostic_api_data) < 5 and value_key is not None:
+                        st.session_state.diagnostic_api_data.append({
+                            "value_key": value_key,
+                            "raw_result": dict(result)
+                        })
         # Pagination: next_page is a string token, not a full URL
         next_page = data.get("next_page")
         if next_page:
@@ -206,6 +225,9 @@ def fetch_organization_metric(url, headers, value_key=None):
         return total_input_tokens, total_output_tokens
     return total
 
+
+# Initialize session state for diagnostics
+st.session_state.diagnostic_api_data = []
 
 # Usage in your try block:
 try:
@@ -238,11 +260,50 @@ try:
                 f"- Output tokens: {output_tokens:,}"
             )
         else:
-            st.sidebar.info("**Completions Usage:** Not available.")
+            # Check for diagnostic data related to 'completions'
+            completions_diag_data = [item for item in st.session_state.diagnostic_api_data if item.get("value_key") == "completions"]
+            if completions_diag_data:
+                st.sidebar.warning(
+                    "**Completions Usage (last 30 days):** Reported as 0 tokens.\n"
+                    "Some raw data from the API had an unexpected structure or zero values."
+                )
+                with st.sidebar.expander("View diagnostic data for completions"):
+                    for item in completions_diag_data:
+                        st.json(item.get("raw_result", {}))
+            else:
+                st.sidebar.info("**Completions Usage (last 30 days):** No tokens reported by API.")
+
         if total_cost > 0:
             st.sidebar.success(f"**Total Cost (last 30 days):** ${total_cost:,.2f}")
         else:
-            st.sidebar.info("**Total Cost:** Not available.")
+            # Check for diagnostic data related to 'cost'
+            cost_diag_data = [item for item in st.session_state.diagnostic_api_data if item.get("value_key") == "cost"]
+            if cost_diag_data:
+                st.sidebar.warning(
+                    "**Total Cost (last 30 days):** Reported as $0.00.\n"
+                    "Some raw data from the API had an unexpected structure or zero values."
+                )
+                with st.sidebar.expander("View diagnostic data for cost"):
+                    for item in cost_diag_data:
+                        st.json(item.get("raw_result", {}))
+            else:
+                st.sidebar.info("**Total Cost (last 30 days):** No spend reported by API.")
+
+        # Conditional warning for API key permissions
+        api_key_is_set = bool(api_key) # api_key is already defined in this scope
+
+        cost_is_zero_and_clean = (total_cost == 0 and not any(item.get('value_key') == 'cost' for item in st.session_state.get('diagnostic_api_data', [])))
+
+        completions_are_zero_and_clean = (input_tokens == 0 and output_tokens == 0 and not any(item.get('value_key') == 'completions' for item in st.session_state.get('diagnostic_api_data', [])))
+
+        if api_key_is_set and cost_is_zero_and_clean and completions_are_zero_and_clean:
+            st.sidebar.markdown("---")
+            st.sidebar.warning(
+                "**Verify API Key Permissions:**\n\n"
+                "Your `OPENAI_ADMIN_KEY` is set, but no usage or cost data was reported by the API. "
+                "Please ensure the key is valid, active, and has the necessary permissions for the "
+                "correct OpenAI organization to access usage and billing information."
+            )
 
 except Exception as e:
     st.sidebar.warning(f"Could not fetch usage/costs: {e}")
