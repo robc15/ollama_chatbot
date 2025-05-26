@@ -68,6 +68,16 @@ DEFAULT_MODEL_OPTIONS = [
         ),
         "cost": "$0 (runs locally via Ollama)",
         "default": False
+    },
+    {
+        "id": "gemma",
+        "name": "Gemma",
+        "description": (
+            "Google's Gemma model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
+            "Best for general chat, coding, and experimentation without cloud costs."
+        ),
+        "cost": "$0 (runs locally via Ollama)",
+        "default": False
     }
 ]
 
@@ -87,6 +97,10 @@ PRICING_TABLES = {
         ["Output", "$2.00"]
     ],
     "llama3": [
+        ["Input", "$0 (runs locally)"],
+        ["Output", "$0 (runs locally)"]
+    ],
+    "gemma": [
         ["Input", "$0 (runs locally)"],
         ["Output", "$0 (runs locally)"]
     ]
@@ -145,6 +159,11 @@ def fetch_openai_models():
             llama3_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "llama3"), None)
             if llama3_meta:
                 available.append(llama3_meta)
+        # Always add Gemma (Ollama) as an option
+        if not any(m["id"] == "gemma" for m in available):
+            gemma_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "gemma"), None)
+            if gemma_meta:
+                available.append(gemma_meta)
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
@@ -156,6 +175,18 @@ def fetch_openai_models():
                 "name": "Llama 3",
                 "description": (
                     "Meta's Llama 3 model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
+                    "Best for general chat, coding, and experimentation without cloud costs."
+                ),
+                "cost": "$0 (runs locally via Ollama)",
+                "default": False
+            })
+        # Always add Gemma (Ollama) as an option
+        if not any(m["id"] == "gemma" for m in fallback):
+            fallback.append({
+                "id": "gemma",
+                "name": "Gemma",
+                "description": (
+                    "Google's Gemma model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
                     "Best for general chat, coding, and experimentation without cloud costs."
                 ),
                 "cost": "$0 (runs locally via Ollama)",
@@ -193,10 +224,11 @@ if st.button("Ask"):
     if user_input.strip():
         with st.spinner('Processing...'):
             try:
-                if selected_model["id"] == "llama3":
+                if selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
                     import subprocess
+                    ollama_model = f"{selected_model['id']}:latest"
                     result = subprocess.run(
-                        ["ollama", "run", "llama3:latest"],
+                        ["ollama", "run", ollama_model],
                         input=user_input,
                         capture_output=True,
                         text=True
