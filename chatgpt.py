@@ -286,7 +286,29 @@ if st.button("Ask"):
                     )
                     st.subheader("Thread created for image analysis.")
                     st.write(f"Thread ID: {thread.id}")
-                    st.write("You can continue interacting with this thread using the thread ID.")
+                    # Fetch and display the assistant's response
+                    try:
+                        # Wait for the assistant's response (polling)
+                        import time as _time
+                        for _ in range(10):
+                            messages = client.beta.threads.messages.list(thread_id=thread.id)
+                            # Look for an assistant message
+                            for msg in messages.data:
+                                if msg.role == "assistant":
+                                    # Display the assistant's response
+                                    st.subheader("Model Response:")
+                                    if msg.content and isinstance(msg.content, list):
+                                        for part in msg.content:
+                                            if part.get("type") == "text":
+                                                st.write(part.get("text"))
+                                    else:
+                                        st.write(msg.content)
+                                    raise StopIteration  # Exit polling
+                            _time.sleep(2)
+                    except StopIteration:
+                        pass
+                    except Exception as e:
+                        st.warning(f"Could not fetch assistant response: {e}")
                 elif selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
                     import subprocess
                     ollama_model = f"{selected_model['id']}:latest"
