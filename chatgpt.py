@@ -286,17 +286,26 @@ if st.button("Ask"):
                     )
                     st.subheader("Thread created for image analysis.")
                     st.write(f"Thread ID: {thread.id}")
-                    # Fetch and display the assistant's response
+                    # Create a run for the thread
                     try:
-                        # Wait for the assistant's response (polling)
+                        run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=None)
                         import time as _time
-                        found_response = False
-                        for _ in range(20):  # Increase polling attempts and time
+                        run_failed = False
+                        for _ in range(30):  # Poll up to 90 seconds
+                            run_status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+                            if run_status.status == "completed":
+                                break
+                            elif run_status.status in ("failed", "cancelled", "expired"):
+                                st.warning(f"Run status: {run_status.status}. Unable to get a response.")
+                                run_failed = True
+                                break
+                            _time.sleep(3)
+                        if not run_failed and run_status.status == "completed":
+                            # Now fetch the assistant's response
                             messages = client.beta.threads.messages.list(thread_id=thread.id)
-                            # Look for an assistant message
+                            found_response = False
                             for msg in messages.data:
                                 if msg.role == "assistant":
-                                    # Display the assistant's response
                                     st.subheader("Model Response:")
                                     found_response = True
                                     if msg.content and isinstance(msg.content, list):
@@ -306,10 +315,9 @@ if st.button("Ask"):
                                     else:
                                         st.write(msg.content)
                                     break
-                            if found_response:
-                                break
-                            _time.sleep(3)  # Wait a bit longer between polls
-                        if not found_response:
+                            if not found_response:
+                                st.warning("No assistant response found after run completion.")
+                        elif not run_failed:
                             st.warning("No response from the model after waiting. Please try again or check your OpenAI account limits.")
                     except Exception as e:
                         st.warning(f"Could not fetch assistant response: {e}")
