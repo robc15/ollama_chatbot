@@ -134,6 +134,41 @@ def show_pricing_table(model_id):
         )
 
 
+# File uploader for AI analysis (text, PDF, image)
+uploaded_file = st.file_uploader("Upload a file for AI analysis (text, PDF, image)", type=["txt", "pdf", "png", "jpg", "jpeg"])
+file_content = None
+file_id = None
+file_type = None
+if uploaded_file is not None:
+    file_type = uploaded_file.type
+    if file_type == "application/pdf":
+        try:
+            import PyPDF2
+            pdf_reader = PyPDF2.PdfReader(uploaded_file)
+            file_content = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
+            st.success("PDF uploaded and ready for analysis.")
+        except Exception as e:
+            st.error(f"Could not read PDF: {e}")
+    elif file_type.startswith("text"):
+        file_content = uploaded_file.read().decode("utf-8", errors="ignore")
+        st.success("Text file uploaded and ready for analysis.")
+    elif file_type.startswith("image"):
+        # Upload image to OpenAI and get file_id
+        try:
+            with open("temp_image", "wb") as f:
+                f.write(uploaded_file.read())
+            file = client.files.create(
+                file=open("temp_image", "rb"),
+                purpose="vision"
+            )
+            file_id = file.id
+            st.success("Image uploaded to OpenAI for analysis.")
+        except Exception as e:
+            st.error(f"Could not upload image: {e}")
+    else:
+        st.warning("Unsupported file type.")
+
+
 # Helper: fetch available models from OpenAI API
 @st.cache_data(ttl=600)
 def fetch_openai_models():
@@ -221,15 +256,35 @@ st.info(f"Model in use: {selected_model['name']}")
 
 # Button to submit the question
 if st.button("Ask"):
-    if user_input.strip():
+    if user_input.strip() or file_content or file_id:
         with st.spinner('Processing...'):
             try:
-                if selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
+                prompt = user_input.strip()
+                # If text or PDF file uploaded, prepend its content to the prompt
+                if file_content:
+                    prompt = f"Analyze the following file content:\n\n{file_content}\n\nUser question: {user_input.strip()}"
+                # If image uploaded, use OpenAI vision API
+                if file_id and file_type and file_type.startswith("image") and selected_model["id"].startswith("gpt-"):
+                    thread = client.beta.threads.create(
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": user_input.strip() or "What is in this image?"},
+                                    {"type": "image_file", "image_file": {"file_id": file_id}}
+                                ]
+                            }
+                        ]
+                    )
+                    st.subheader("Thread created for image analysis.")
+                    st.write(f"Thread ID: {thread.id}")
+                    st.write("You can continue interacting with this thread using the thread ID.")
+                elif selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
                     import subprocess
                     ollama_model = f"{selected_model['id']}:latest"
                     result = subprocess.run(
                         ["ollama", "run", ollama_model],
-                        input=user_input,
+                        input=prompt,
                         capture_output=True,
                         text=True
                     )
@@ -242,7 +297,7 @@ if st.button("Ask"):
                 else:
                     response = client.responses.create(
                         model=selected_model["id"],
-                        input=[{"role": "user", "content": user_input}],
+                        input=[{"role": "user", "content": prompt}],
                         text={
                             "format": {
                                 "type": "text"
