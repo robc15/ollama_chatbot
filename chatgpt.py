@@ -95,7 +95,7 @@ PRICING_TABLES = {
 
 def show_pricing_table(model_id):
     if model_id in PRICING_TABLES:
-        st.sidebar.markdown("**Pricing (per 1M tokens):**")
+        st.sidebar.markdown("**Pricing (per 1 million tokens):**")
         st.sidebar.markdown(
             (
                 "<small>**What is a token?** A token is a chunk of text (roughly 4 characters or 0.75 words). "
