@@ -137,7 +137,6 @@ def show_pricing_table(model_id):
 # File uploader for AI analysis (text, PDF, image)
 uploaded_file = st.file_uploader("Upload a file for AI analysis (text, PDF, image)", type=["txt", "pdf", "png", "jpg", "jpeg"])
 file_content = None
-file_id = None
 file_type = None
 if uploaded_file is not None:
     file_type = uploaded_file.type
@@ -153,26 +152,9 @@ if uploaded_file is not None:
         file_content = uploaded_file.read().decode("utf-8", errors="ignore")
         st.success("Text file uploaded and ready for analysis.")
     elif file_type.startswith("image"):
-        # Upload image to OpenAI and get file_id
-        try:
-            # Get the file extension for correct file type
-            import os as _os
-            ext = _os.path.splitext(uploaded_file.name)[1].lower()
-            valid_exts = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
-            if ext not in valid_exts:
-                st.error(f"Unsupported image format: {ext}. Please upload a PNG, JPG, JPEG, GIF, or WEBP file.")
-            else:
-                temp_path = f"temp_image{ext}"
-                with open(temp_path, "wb") as f:
-                    f.write(uploaded_file.read())
-                file = client.files.create(
-                    file=open(temp_path, "rb"),
-                    purpose="vision"
-                )
-                file_id = file.id
-                st.success(f"Image ({ext}) uploaded to OpenAI for analysis.")
-        except Exception as e:
-            st.error(f"Could not upload image: {e}")
+        # For images, just read the bytes and note the file type
+        file_content = None
+        st.success("Image uploaded. You can ask questions about this file, but image content will not be analyzed.")
     else:
         st.warning("Unsupported file type.")
 
@@ -264,64 +246,16 @@ st.info(f"Model in use: {selected_model['name']}")
 
 # Button to submit the question
 if st.button("Ask"):
-    if user_input.strip() or file_content or file_id:
+    if user_input.strip() or file_content:
         with st.spinner('Processing...'):
             try:
                 prompt = user_input.strip()
                 # If text or PDF file uploaded, prepend its content to the prompt
                 if file_content:
                     prompt = f"Analyze the following file content:\n\n{file_content}\n\nUser question: {user_input.strip()}"
-                # If image uploaded, use OpenAI vision API
-                if file_id and file_type and file_type.startswith("image") and selected_model["id"].startswith("gpt-"):
-                    thread = client.beta.threads.create(
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": user_input.strip() or "What is in this image?"},
-                                    {"type": "image_file", "image_file": {"file_id": file_id}}
-                                ]
-                            }
-                        ]
-                    )
-                    st.subheader("Thread created for image analysis.")
-                    st.write(f"Thread ID: {thread.id}")
-                    # Create a run for the thread
-                    try:
-                        run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=None)
-                        import time as _time
-                        run_failed = False
-                        for _ in range(30):  # Poll up to 90 seconds
-                            run_status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-                            if run_status.status == "completed":
-                                break
-                            elif run_status.status in ("failed", "cancelled", "expired"):
-                                st.warning(f"Run status: {run_status.status}. Unable to get a response.")
-                                run_failed = True
-                                break
-                            _time.sleep(3)
-                        if not run_failed and run_status.status == "completed":
-                            # Now fetch the assistant's response
-                            messages = client.beta.threads.messages.list(thread_id=thread.id)
-                            found_response = False
-                            for msg in messages.data:
-                                if msg.role == "assistant":
-                                    st.subheader("Model Response:")
-                                    found_response = True
-                                    if msg.content and isinstance(msg.content, list):
-                                        for part in msg.content:
-                                            if part.get("type") == "text":
-                                                st.write(part.get("text"))
-                                    else:
-                                        st.write(msg.content)
-                                    break
-                            if not found_response:
-                                st.warning("No assistant response found after run completion.")
-                        elif not run_failed:
-                            st.warning("No response from the model after waiting. Please try again or check your OpenAI account limits.")
-                    except Exception as e:
-                        st.warning(f"Could not fetch assistant response: {e}")
-                elif selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
+                elif file_type and file_type.startswith("image"):
+                    prompt = f"The user uploaded an image file named '{uploaded_file.name}'. Please note: image content cannot be analyzed, but you may answer questions about the filename or context. User question: {user_input.strip()}"
+                if selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
                     import subprocess
                     ollama_model = f"{selected_model['id']}:latest"
                     result = subprocess.run(
@@ -356,10 +290,8 @@ if st.button("Ask"):
                     # Parse the output to extract the text
                     output_text = None
                     if hasattr(response, 'output') and response.output:
-                        # If output is a list of objects, extract the text from the first one
                         if isinstance(response.output, list) and len(response.output) > 0:
                             first = response.output[0]
-                            # Try to extract text from known structure
                             if hasattr(first, 'content') and isinstance(first.content, list) and len(first.content) > 0:
                                 content_item = first.content[0]
                                 if hasattr(content_item, 'text'):
@@ -381,4 +313,4 @@ if st.button("Ask"):
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
     else:
-        st.warning("Please enter a question.")
+        st.warning("Please enter a question or upload a file.")
