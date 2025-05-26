@@ -63,10 +63,10 @@ DEFAULT_MODEL_OPTIONS = [
         "id": "llama3",
         "name": "Llama 3",
         "description": (
-            "Meta's Llama 3 model, running locally via Olloma. Great for privacy, offline use, and fast responses on supported hardware. "
+            "Meta's Llama 3 model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
             "Best for general chat, coding, and experimentation without cloud costs."
         ),
-        "cost": "$0 (runs locally via Olloma)",
+        "cost": "$0 (runs locally via Ollama)",
         "default": False
     }
 ]
@@ -140,7 +140,7 @@ def fetch_openai_models():
         # Always ensure at least the default model is present
         if not any(m["default"] for m in available):
             available.insert(0, DEFAULT_MODEL_OPTIONS[0])
-        # Always add Llama 3 (Olloma) as an option
+        # Always add Llama 3 (Ollama) as an option
         if not any(m["id"] == "llama3" for m in available):
             llama3_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "llama3"), None)
             if llama3_meta:
@@ -148,17 +148,17 @@ def fetch_openai_models():
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
-        # Always add Llama 3 (Olloma) as an option
+        # Always add Llama 3 (Ollama) as an option
         fallback = DEFAULT_MODEL_OPTIONS.copy()
         if not any(m["id"] == "llama3" for m in fallback):
             fallback.append({
                 "id": "llama3",
                 "name": "Llama 3",
                 "description": (
-                    "Meta's Llama 3 model, running locally via Olloma. Great for privacy, offline use, and fast responses on supported hardware. "
+                    "Meta's Llama 3 model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
                     "Best for general chat, coding, and experimentation without cloud costs."
                 ),
-                "cost": "$0 (runs locally via Olloma)",
+                "cost": "$0 (runs locally via Ollama)",
                 "default": False
             })
         return fallback
@@ -196,7 +196,7 @@ if st.button("Ask"):
                 if selected_model["id"] == "llama3":
                     import subprocess
                     result = subprocess.run(
-                        ["olloma", "run", "llama3:latest"],
+                        ["ollama", "run", "llama3:latest"],
                         input=user_input,
                         capture_output=True,
                         text=True
