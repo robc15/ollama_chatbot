@@ -72,6 +72,42 @@ DEFAULT_MODEL_OPTIONS = [
 ]
 
 
+# Pricing tables for each model (keys must match model IDs in DEFAULT_MODEL_OPTIONS)
+PRICING_TABLES = {
+    "gpt-4.1": [
+        ["Input", "$10.00"],
+        ["Output", "$30.00"]
+    ],
+    "gpt-4o": [
+        ["Input", "$5.00"],
+        ["Output", "$15.00"]
+    ],
+    "gpt-4o-mini": [
+        ["Input", "$1.00"],
+        ["Output", "$2.00"]
+    ],
+    "llama3": [
+        ["Input", "$0 (runs locally)"],
+        ["Output", "$0 (runs locally)"]
+    ]
+}
+
+
+def show_pricing_table(model_id):
+    if model_id in PRICING_TABLES:
+        st.sidebar.markdown("**Pricing (per 1M tokens):**")
+        st.sidebar.markdown(
+            "<small>**What is a token?** A token is a chunk of text (roughly 4 characters or 0.75 words). For example, 'ChatGPT is great!' is 5 tokens. Pricing is based on the number of tokens processed.</small>",
+            unsafe_allow_html=True
+        )
+        st.sidebar.table(
+            {
+                "Type": [row[0] for row in PRICING_TABLES[model_id]],
+                "Price": [row[1] for row in PRICING_TABLES[model_id]],
+            }
+        )
+
+
 # Helper: fetch available models from OpenAI API
 @st.cache_data(ttl=600)
 def fetch_openai_models():
@@ -131,6 +167,8 @@ selected_model_name = st.sidebar.selectbox("Choose a model", model_names, index=
 selected_model = next((m for m in st.session_state["available_models"] if m["name"] == selected_model_name), None)
 if selected_model:
     st.sidebar.markdown(f"**{selected_model['name']}**\n\n{selected_model['description']}")
+    # Show pricing table if available
+    show_pricing_table(selected_model["id"])
 else:
     st.sidebar.warning("Model not found.")
 
