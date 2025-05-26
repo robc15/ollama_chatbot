@@ -290,23 +290,27 @@ if st.button("Ask"):
                     try:
                         # Wait for the assistant's response (polling)
                         import time as _time
-                        for _ in range(10):
+                        found_response = False
+                        for _ in range(20):  # Increase polling attempts and time
                             messages = client.beta.threads.messages.list(thread_id=thread.id)
                             # Look for an assistant message
                             for msg in messages.data:
                                 if msg.role == "assistant":
                                     # Display the assistant's response
                                     st.subheader("Model Response:")
+                                    found_response = True
                                     if msg.content and isinstance(msg.content, list):
                                         for part in msg.content:
                                             if part.get("type") == "text":
                                                 st.write(part.get("text"))
                                     else:
                                         st.write(msg.content)
-                                    raise StopIteration  # Exit polling
-                            _time.sleep(2)
-                    except StopIteration:
-                        pass
+                                    break
+                            if found_response:
+                                break
+                            _time.sleep(3)  # Wait a bit longer between polls
+                        if not found_response:
+                            st.warning("No response from the model after waiting. Please try again or check your OpenAI account limits.")
                     except Exception as e:
                         st.warning(f"Could not fetch assistant response: {e}")
                 elif selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
