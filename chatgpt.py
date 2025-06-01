@@ -2,9 +2,15 @@ import streamlit as st
 from openai import OpenAI
 import time
 import os
+import base64
 
 # Force Streamlit to run on port 8502
 os.environ["STREAMLIT_SERVER_PORT"] = "8502"
+
+# Image capable models: A list of model IDs that are known to support image input (multimodal).
+# This list is used to determine if an uploaded image should be processed into base64 data
+# and sent to the model in a multimodal format.
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini']
 
 # Title of the app
 st.title("AI Robot 🤖")
@@ -135,28 +141,70 @@ def show_pricing_table(model_id):
 
 
 # File uploader for AI analysis (text, PDF, image)
-uploaded_file = st.file_uploader("Upload a file for AI analysis (text, PDF, image)", type=["txt", "pdf", "png", "jpg", "jpeg"])
-file_content = None
-file_type = None
+uploaded_file = st.file_uploader(
+    "Upload a file for AI analysis (text, PDF, image)",
+    type=["txt", "pdf", "png", "jpg", "jpeg"]  # Allowed file extensions
+)
+
+# Global variables to store processed file data
+file_content = None  # Stores text content from TXT or PDF files
+image_base64_data = None  # Stores base64 encoded string of image files for capable models
+file_type = None  # Stores the MIME type of the uploaded file (e.g., "image/png")
+
+# Note on Streamlit execution order for `selected_model`:
+# The `selected_model` dictionary is defined further down in the script, after the model selection UI.
+# However, Streamlit reruns the entire script upon any interaction (like file upload).
+# This means that by the time this file processing logic is executed after a file is uploaded,
+# the `selected_model` variable will have been set based on the user's choice in the sidebar,
+# reflecting the model that was selected *when the upload interaction occurred*.
+# Some comments below refer to this interaction and how `selected_model` is accessed.
+
 if uploaded_file is not None:
-    file_type = uploaded_file.type
+    file_type = uploaded_file.type  # Get the MIME type of the file
+
+    # Process PDF files
     if file_type == "application/pdf":
         try:
-            import PyPDF2
+            import PyPDF2  # Lazy import for PDF processing
             pdf_reader = PyPDF2.PdfReader(uploaded_file)
+            # Extract text from all pages and combine
             file_content = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
+            image_base64_data = None # Ensure no stale image data
             st.success("PDF uploaded and ready for analysis.")
         except Exception as e:
             st.error(f"Could not read PDF: {e}")
+            file_content = None # Reset on error
+
+    # Process text files
     elif file_type.startswith("text"):
         file_content = uploaded_file.read().decode("utf-8", errors="ignore")
+        image_base64_data = None # Ensure no stale image data
         st.success("Text file uploaded and ready for analysis.")
+
+    # Process image files
     elif file_type.startswith("image"):
-        # For images, just read the bytes and note the file type
-        file_content = None
-        st.success("Image uploaded. You can ask questions about this file, but image content will not be analyzed.")
+        # `selected_model` will be populated by Streamlit's execution flow before this.
+        # Its 'id' field is used to check if the model can handle images.
+        current_model_id = selected_model['id']
+
+        if current_model_id in IMAGE_CAPABLE_MODELS:
+            # For image-capable models, read image bytes and encode to base64
+            image_bytes = uploaded_file.getvalue()
+            image_base64_data = base64.b64encode(image_bytes).decode()
+            file_content = None  # Clear text file content if any
+            st.success(f"Image uploaded and ready for analysis with {selected_model['name']}.")
+        else:
+            # For non-image-capable models, do not process image data.
+            # Set image_base64_data to None and inform user.
+            file_content = None # Clear text file content
+            image_base64_data = None
+            st.success("Image uploaded. You can ask questions about this file, but image content will not be analyzed by this model.")
+
+    # Handle unsupported file types
     else:
         st.warning("Unsupported file type.")
+        file_content = None
+        image_base64_data = None
 
 
 # Helper: fetch available models from OpenAI API
@@ -249,18 +297,104 @@ if st.button("Ask"):
     if user_input.strip() or file_content:
         with st.spinner('Processing...'):
             try:
-                prompt = user_input.strip()
-                # If text or PDF file uploaded, prepend its content to the prompt
-                if file_content:
-                    prompt = f"Analyze the following file content:\n\n{file_content}\n\nUser question: {user_input.strip()}"
-                elif file_type and file_type.startswith("image"):
-                    prompt = f"The user uploaded an image file named '{uploaded_file.name}'. Please note: image content cannot be analyzed, but you may answer questions about the filename or context. User question: {user_input.strip()}"
+                # --- Start of Prompt Construction and API Call Logic ---
+                # Check if the selected model is an Ollama model or an OpenAI model
+                if not (selected_model["id"] == "llama3" or selected_model["id"] == "gemma"):
+                    # --- OpenAI Model Path ---
+                    messages_payload = [{"role": "user", "content": []}]
+                    current_content_parts = []  # To build the list of content parts for the prompt
+
+                    user_question = user_input.strip()
+
+                    # Case 1: Image uploaded and model is image-capable
+                    if image_base64_data and selected_model["id"] in IMAGE_CAPABLE_MODELS:
+                        # Add user's text question as a text part
+                        if user_question:
+                            current_content_parts.append({"type": "text", "text": user_question})
+                        else:
+                            # Default text if no specific question is asked about the image
+                            current_content_parts.append({"type": "text", "text": f"Describe this image ({uploaded_file.name})."})
+
+                        # Add image data as an image URL part (base64 encoded)
+                        # Use the stored file_type (MIME type) for the data URI. Default to image/jpeg if unknown.
+                        mime_type = file_type if file_type and file_type.startswith("image/") else "image/jpeg"
+                        current_content_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_base64_data}"}
+                        })
+
+                    # Case 2: Text or PDF file content is available
+                    elif file_content:
+                        # Combine file content and user question into a single text part
+                        combined_text = f"Analyze the following file content:\n\n{file_content}\n\nUser question: {user_question}"
+                        current_content_parts.append({"type": "text", "text": combined_text})
+
+                    # Case 3: Image uploaded, but model is NOT image-capable
+                    elif file_type and file_type.startswith("image/"):
+                        # Inform the user that the image won't be analyzed by this model
+                        non_analyzable_prompt = (
+                            f"The user uploaded an image file named '{uploaded_file.name}'. "
+                            f"Please note: image content will not be analyzed by the current model ({selected_model['name']}). "
+                            f"User question: {user_question}"
+                        )
+                        current_content_parts.append({"type": "text", "text": non_analyzable_prompt})
+
+                    # Case 4: Only user text input (no file or unhandled file type)
+                    else:
+                        if user_question:
+                            current_content_parts.append({"type": "text", "text": user_question})
+                        else:
+                            # If no text and no file/image, warn and exit
+                            st.warning("Please enter a question or upload a file.")
+                            return
+
+                    messages_payload[0]["content"] = current_content_parts
+
+                # --- Model Execution Logic ---
                 if selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
-                    import subprocess
-                    ollama_model = f"{selected_model['id']}:latest"
+                    # --- Ollama Model Path ---
+                    import subprocess  # For running Ollama CLI
+                    ollama_model_tag = f"{selected_model['id']}:latest"
+
+                    ollama_prompt_str = ""  # Final prompt string for Ollama
+                    user_question_for_ollama = user_input.strip()
+
+                    # Check file type to construct the Ollama prompt appropriately
+                    if file_type and file_type.startswith("image/"):
+                        # Image uploaded, but Ollama models are not treated as image-capable here.
+                        # Provide a textual notification about the image.
+                        if user_question_for_ollama:
+                            ollama_prompt_str = (
+                                f"The user uploaded an image file named '{uploaded_file.name}'. "
+                                f"This model cannot analyze image content directly. "
+                                f"User question: {user_question_for_ollama}"
+                            )
+                        else:
+                            ollama_prompt_str = (
+                                f"The user uploaded an image file named '{uploaded_file.name}'. "
+                                f"This model cannot analyze image content directly. "
+                                f"Please ask a question about the file's context or metadata, or provide a general query."
+                            )
+                    elif file_content:  # Text or PDF file content
+                        if user_question_for_ollama:
+                            ollama_prompt_str = (
+                                f"Analyze the following file content:\n\n{file_content}\n\n"
+                                f"User question: {user_question_for_ollama}"
+                            )
+                        else:
+                            ollama_prompt_str = f"Analyze the following file content:\n\n{file_content}"
+                    else:  # Only user text input
+                        ollama_prompt_str = user_question_for_ollama
+
+                    # Ensure the final prompt for Ollama is not empty
+                    if not ollama_prompt_str.strip():
+                         st.warning("Please enter a question or upload a file for the Ollama model.")
+                         return
+
+                    # Execute Ollama command
                     result = subprocess.run(
-                        ["ollama", "run", ollama_model],
-                        input=prompt,
+                        ["ollama", "run", ollama_model_tag],
+                        input=ollama_prompt_str,
                         capture_output=True,
                         text=True
                     )
@@ -271,20 +405,27 @@ if st.button("Ask"):
                     else:
                         st.write("Sorry, no response from the model.")
                 else:
+                    # --- OpenAI Model API Call ---
+                    # Ensure there's content to send
+                    if not messages_payload[0]["content"]:
+                        st.warning("Please enter a question to accompany the uploaded file.")
+                        return
+
+                    # Make the API call to OpenAI
+                    # Note: client.responses.create seems to be a placeholder or custom SDK method.
+                    # Standard OpenAI SDK uses client.chat.completions.create with a 'messages' parameter.
+                    # This code assumes client.responses.create is adapted for this payload.
                     response = client.responses.create(
                         model=selected_model["id"],
-                        input=[{"role": "user", "content": prompt}],
-                        text={
-                            "format": {
-                                "type": "text"
-                            }
-                        },
+                        input=messages_payload,  # Pass the structured multimodal payload
+                        # The 'text' parameter (used in previous versions) is removed,
+                        # as it's typically not used for multimodal chat completion calls.
                         reasoning={},
                         tools=[],
                         temperature=1,
                         max_output_tokens=2048,
                         top_p=1,
-                        store=True
+                        store=True  # Assuming this is a valid parameter for the client
                     )
                     # Display the model's response
                     # Parse the output to extract the text
