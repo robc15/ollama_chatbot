@@ -346,7 +346,7 @@ if st.button("Ask"):
                         else:
                             # If no text and no file/image, warn and exit
                             st.warning("Please enter a question or upload a file.")
-                            return
+                            st.stop()
 
                     messages_payload[0]["content"] = current_content_parts
 
@@ -389,7 +389,7 @@ if st.button("Ask"):
                     # Ensure the final prompt for Ollama is not empty
                     if not ollama_prompt_str.strip():
                          st.warning("Please enter a question or upload a file for the Ollama model.")
-                         return
+                         st.stop()
 
                     # Execute Ollama command
                     result = subprocess.run(
@@ -409,7 +409,7 @@ if st.button("Ask"):
                     # Ensure there's content to send
                     if not messages_payload[0]["content"]:
                         st.warning("Please enter a question to accompany the uploaded file.")
-                        return
+                        st.stop()
 
                     # Make the API call to OpenAI
                     # Note: client.responses.create seems to be a placeholder or custom SDK method.
