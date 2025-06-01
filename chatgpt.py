@@ -310,10 +310,10 @@ if st.button("Ask"):
                     if image_base64_data and selected_model["id"] in IMAGE_CAPABLE_MODELS:
                         # Add user's text question as a text part
                         if user_question:
-                            current_content_parts.append({"type": "text", "text": user_question})
+                            current_content_parts.append({"type": "input_text", "text": user_question})
                         else:
                             # Default text if no specific question is asked about the image
-                            current_content_parts.append({"type": "text", "text": f"Describe this image ({uploaded_file.name})."})
+                            current_content_parts.append({"type": "input_text", "text": f"Describe this image ({uploaded_file.name})."})
 
                         # Add image data as an image URL part (base64 encoded)
                         # Use the stored file_type (MIME type) for the data URI. Default to image/jpeg if unknown.
@@ -327,7 +327,7 @@ if st.button("Ask"):
                     elif file_content:
                         # Combine file content and user question into a single text part
                         combined_text = f"Analyze the following file content:\n\n{file_content}\n\nUser question: {user_question}"
-                        current_content_parts.append({"type": "text", "text": combined_text})
+                        current_content_parts.append({"type": "input_text", "text": combined_text})
 
                     # Case 3: Image uploaded, but model is NOT image-capable
                     elif file_type and file_type.startswith("image/"):
@@ -337,12 +337,12 @@ if st.button("Ask"):
                             f"Please note: image content will not be analyzed by the current model ({selected_model['name']}). "
                             f"User question: {user_question}"
                         )
-                        current_content_parts.append({"type": "text", "text": non_analyzable_prompt})
+                        current_content_parts.append({"type": "input_text", "text": non_analyzable_prompt})
 
                     # Case 4: Only user text input (no file or unhandled file type)
                     else:
                         if user_question:
-                            current_content_parts.append({"type": "text", "text": user_question})
+                            current_content_parts.append({"type": "input_text", "text": user_question})
                         else:
                             # If no text and no file/image, warn and exit
                             st.warning("Please enter a question or upload a file.")
