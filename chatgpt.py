@@ -43,7 +43,8 @@ DEFAULT_MODEL_OPTIONS = [
             "Excels at coding, analysis, and nuanced conversation."
         ),
         "cost": "$10.00 / 1M input tokens, $30.00 / 1M output tokens",
-        "default": True
+        "default": True,
+        "supported_file_types": ["txt", "pdf"]
     },
     {
         "id": "gpt-4o",
@@ -53,7 +54,8 @@ DEFAULT_MODEL_OPTIONS = [
             "Great for real-time and broad applications."
         ),
         "cost": "$5.00 / 1M input tokens, $15.00 / 1M output tokens",
-        "default": False
+        "default": False,
+        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     },
     {
         "id": "gpt-4o-mini",
@@ -63,7 +65,8 @@ DEFAULT_MODEL_OPTIONS = [
             "Ideal for high-volume, low-latency tasks where cost is critical."
         ),
         "cost": "$1.00 / 1M input tokens, $2.00 / 1M output tokens",
-        "default": False
+        "default": False,
+        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     },
     {
         "id": "llama3",
@@ -73,7 +76,8 @@ DEFAULT_MODEL_OPTIONS = [
             "Best for general chat, coding, and experimentation without cloud costs."
         ),
         "cost": "$0 (runs locally via Ollama)",
-        "default": False
+        "default": False,
+        "supported_file_types": ["txt", "pdf"]
     },
     {
         "id": "gemma",
@@ -83,7 +87,8 @@ DEFAULT_MODEL_OPTIONS = [
             "Best for general chat, coding, and experimentation without cloud costs."
         ),
         "cost": "$0 (runs locally via Ollama)",
-        "default": False
+        "default": False,
+        "supported_file_types": ["txt", "pdf"]
     }
 ]
 
@@ -140,71 +145,6 @@ def show_pricing_table(model_id):
         )
 
 
-# File uploader for AI analysis (text, PDF, image)
-uploaded_file = st.file_uploader(
-    "Upload a file for AI analysis (text, PDF, image)",
-    type=["txt", "pdf", "png", "jpg", "jpeg"]  # Allowed file extensions
-)
-
-# Global variables to store processed file data
-file_content = None  # Stores text content from TXT or PDF files
-image_base64_data = None  # Stores base64 encoded string of image files for capable models
-file_type = None  # Stores the MIME type of the uploaded file (e.g., "image/png")
-
-# Note on Streamlit execution order for `selected_model`:
-# The `selected_model` dictionary is defined further down in the script, after the model selection UI.
-# However, Streamlit reruns the entire script upon any interaction (like file upload).
-# This means that by the time this file processing logic is executed after a file is uploaded,
-# the `selected_model` variable will have been set based on the user's choice in the sidebar,
-# reflecting the model that was selected *when the upload interaction occurred*.
-# Some comments below refer to this interaction and how `selected_model` is accessed.
-
-if uploaded_file is not None:
-    file_type = uploaded_file.type  # Get the MIME type of the file
-
-    # Process PDF files
-    if file_type == "application/pdf":
-        try:
-            import PyPDF2  # Lazy import for PDF processing
-            pdf_reader = PyPDF2.PdfReader(uploaded_file)
-            # Extract text from all pages and combine
-            file_content = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
-            image_base64_data = None # Ensure no stale image data
-            st.success("PDF uploaded and ready for analysis.")
-        except Exception as e:
-            st.error(f"Could not read PDF: {e}")
-            file_content = None # Reset on error
-
-    # Process text files
-    elif file_type.startswith("text"):
-        file_content = uploaded_file.read().decode("utf-8", errors="ignore")
-        image_base64_data = None # Ensure no stale image data
-        st.success("Text file uploaded and ready for analysis.")
-
-    # Process image files
-    elif file_type.startswith("image"):
-        # `selected_model` will be populated by Streamlit's execution flow before this.
-        # Its 'id' field is used to check if the model can handle images.
-        current_model_id = selected_model['id']
-
-        if current_model_id in IMAGE_CAPABLE_MODELS:
-            # For image-capable models, read image bytes and encode to base64
-            image_bytes = uploaded_file.getvalue()
-            image_base64_data = base64.b64encode(image_bytes).decode()
-            file_content = None  # Clear text file content if any
-            st.success(f"Image uploaded and ready for analysis with {selected_model['name']}.")
-        else:
-            # For non-image-capable models, do not process image data.
-            # Set image_base64_data to None and inform user.
-            file_content = None # Clear text file content
-            image_base64_data = None
-            st.success("Image uploaded. You can ask questions about this file, but image content will not be analyzed by this model.")
-
-    # Handle unsupported file types
-    else:
-        st.warning("Unsupported file type.")
-        file_content = None
-        image_base64_data = None
 
 
 # Helper: fetch available models from OpenAI API
@@ -251,7 +191,8 @@ def fetch_openai_models():
                     "Best for general chat, coding, and experimentation without cloud costs."
                 ),
                 "cost": "$0 (runs locally via Ollama)",
-                "default": False
+                "default": False,
+                "supported_file_types": ["txt", "pdf"]
             })
         # Always add Gemma (Ollama) as an option
         if not any(m["id"] == "gemma" for m in fallback):
@@ -263,7 +204,8 @@ def fetch_openai_models():
                     "Best for general chat, coding, and experimentation without cloud costs."
                 ),
                 "cost": "$0 (runs locally via Ollama)",
-                "default": False
+                "default": False,
+                "supported_file_types": ["txt", "pdf"]
             })
         return fallback
 
@@ -291,10 +233,83 @@ else:
 # Show the model being used
 st.info(f"Model in use: {selected_model['name']}")
 
+# --- File Uploader - Dynamically set based on selected_model ---
+# Determine supported file types for the uploader based on the selected model
+if selected_model:
+    # Use supported_file_types from model metadata, default to ["txt", "pdf"] if key is missing
+    uploader_types = selected_model.get('supported_file_types', ["txt", "pdf"])
+    # Create a dynamic key for the file uploader to ensure it resets when types change
+    uploader_key = f"file_uploader_{selected_model['id']}"
+else:
+    # Fallback if selected_model is somehow None (e.g., during initial script issues)
+    uploader_types = ["txt", "pdf", "png", "jpg", "jpeg"] # Broad default
+    uploader_key = "file_uploader_default"
+
+uploaded_file = st.file_uploader(
+    "Upload a file for AI analysis (types based on selected model)",
+    type=uploader_types,
+    key=uploader_key
+)
+
+# Initialize/reset file processing variables each time after the uploader is rendered
+file_content = None
+image_base64_data = None
+file_type = None
+
+# Process the uploaded file if one exists
+# This block needs to be here, after `selected_model` is known, so that image processing
+# can correctly determine if the current model is image-capable.
+if uploaded_file is not None:
+    file_type = uploaded_file.type  # Get the MIME type of the file
+
+    # Process PDF files
+    if file_type == "application/pdf":
+        try:
+            import PyPDF2  # Lazy import for PDF processing
+            pdf_reader = PyPDF2.PdfReader(uploaded_file)
+            # Extract text from all pages and combine
+            file_content = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
+            image_base64_data = None # Ensure no stale image data
+            st.success("PDF uploaded and ready for analysis.")
+        except Exception as e:
+            st.error(f"Could not read PDF: {e}")
+            file_content = None # Reset on error
+
+    # Process text files
+    elif file_type.startswith("text"):
+        file_content = uploaded_file.read().decode("utf-8", errors="ignore")
+        image_base64_data = None # Ensure no stale image data
+        st.success("Text file uploaded and ready for analysis.")
+
+    # Process image files
+    elif file_type.startswith("image"):
+        # `selected_model` is guaranteed to be defined here due to the placement of this block.
+        current_model_id = selected_model['id']
+
+        if current_model_id in IMAGE_CAPABLE_MODELS:
+            # For image-capable models, read image bytes and encode to base64
+            image_bytes = uploaded_file.getvalue()
+            image_base64_data = base64.b64encode(image_bytes).decode()
+            file_content = None  # Clear text file content if any
+            st.success(f"Image uploaded and ready for analysis with {selected_model['name']}.")
+        else:
+            # For non-image-capable models, do not process image data.
+            file_content = None
+            image_base64_data = None
+            st.success("Image uploaded. You can ask questions about this file, but image content will not be analyzed by this model.")
+
+    # Handle unsupported file types (though uploader `type` should prevent this)
+    else:
+        st.warning(f"Unsupported file type: {file_type}. Please upload one of the supported types: {uploader_types}")
+        file_content = None
+        image_base64_data = None
+# --- End of File Uploader and Processing ---
+
 
 # Button to submit the question
 if st.button("Ask"):
-    if user_input.strip() or file_content:
+    # Check if there is any text input OR if any file content (text or image base64) has been processed
+    if user_input.strip() or file_content or image_base64_data:
         with st.spinner('Processing...'):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
