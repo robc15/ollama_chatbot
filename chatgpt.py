@@ -89,6 +89,17 @@ DEFAULT_MODEL_OPTIONS = [
         "cost": "$0 (runs locally via Ollama)",
         "default": False,
         "supported_file_types": ["txt", "pdf"]
+    },
+    {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "description": (
+            "A powerful model from DeepSeek AI, known for its strong coding and reasoning capabilities. "
+            "Runs locally via Ollama."
+        ),
+        "cost": "$0 (runs locally via Ollama)",
+        "default": False,
+        "supported_file_types": ["txt", "pdf"]
     }
 ]
 
@@ -112,6 +123,10 @@ PRICING_TABLES = {
         ["Output", "$0 (runs locally)"]
     ],
     "gemma": [
+        ["Input", "$0 (runs locally)"],
+        ["Output", "$0 (runs locally)"]
+    ],
+    "deepseek": [
         ["Input", "$0 (runs locally)"],
         ["Output", "$0 (runs locally)"]
     ]
@@ -145,8 +160,6 @@ def show_pricing_table(model_id):
         )
 
 
-
-
 # Helper: fetch available models from OpenAI API
 @st.cache_data(ttl=600)
 def fetch_openai_models():
@@ -177,6 +190,11 @@ def fetch_openai_models():
             gemma_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "gemma"), None)
             if gemma_meta:
                 available.append(gemma_meta)
+        # Always add DeepSeek (Ollama) as an option
+        if not any(m["id"] == "deepseek" for m in available):
+            deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek"), None)
+            if deepseek_meta:
+                available.append(deepseek_meta)
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
@@ -202,6 +220,19 @@ def fetch_openai_models():
                 "description": (
                     "Google's Gemma model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
                     "Best for general chat, coding, and experimentation without cloud costs."
+                ),
+                "cost": "$0 (runs locally via Ollama)",
+                "default": False,
+                "supported_file_types": ["txt", "pdf"]
+            })
+        # Always add DeepSeek (Ollama) as an option
+        if not any(m["id"] == "deepseek" for m in fallback):
+            fallback.append({
+                "id": "deepseek",
+                "name": "DeepSeek",
+                "description": (
+                    "A powerful model from DeepSeek AI, known for its strong coding and reasoning capabilities. "
+                    "Runs locally via Ollama."
                 ),
                 "cost": "$0 (runs locally via Ollama)",
                 "default": False,
@@ -242,7 +273,7 @@ if selected_model:
     uploader_key = f"file_uploader_{selected_model['id']}"
 else:
     # Fallback if selected_model is somehow None (e.g., during initial script issues)
-    uploader_types = ["txt", "pdf", "png", "jpg", "jpeg"] # Broad default
+    uploader_types = ["txt", "pdf", "png", "jpg", "jpeg"]  # Broad default
     uploader_key = "file_uploader_default"
 
 uploaded_file = st.file_uploader(
@@ -269,16 +300,16 @@ if uploaded_file is not None:
             pdf_reader = PyPDF2.PdfReader(uploaded_file)
             # Extract text from all pages and combine
             file_content = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
-            image_base64_data = None # Ensure no stale image data
+            image_base64_data = None  # Ensure no stale image data
             st.success("PDF uploaded and ready for analysis.")
         except Exception as e:
             st.error(f"Could not read PDF: {e}")
-            file_content = None # Reset on error
+            file_content = None  # Reset on error
 
     # Process text files
     elif file_type.startswith("text"):
         file_content = uploaded_file.read().decode("utf-8", errors="ignore")
-        image_base64_data = None # Ensure no stale image data
+        image_base64_data = None  # Ensure no stale image data
         st.success("Text file uploaded and ready for analysis.")
 
     # Process image files
@@ -314,7 +345,7 @@ if st.button("Ask"):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
                 # Check if the selected model is an Ollama model or an OpenAI model
-                if not (selected_model["id"] == "llama3" or selected_model["id"] == "gemma"):
+                if not (selected_model["id"] in ["llama3", "gemma", "deepseek"]):
                     # --- OpenAI Model Path ---
                     messages_payload = [{"role": "user", "content": []}]
                     current_content_parts = []  # To build the list of content parts for the prompt
@@ -366,7 +397,7 @@ if st.button("Ask"):
                     messages_payload[0]["content"] = current_content_parts
 
                 # --- Model Execution Logic ---
-                if selected_model["id"] == "llama3" or selected_model["id"] == "gemma":
+                if selected_model["id"] in ["llama3", "gemma", "deepseek"]:
                     # --- Ollama Model Path ---
                     import subprocess  # For running Ollama CLI
                     ollama_model_tag = f"{selected_model['id']}:latest"
@@ -403,8 +434,8 @@ if st.button("Ask"):
 
                     # Ensure the final prompt for Ollama is not empty
                     if not ollama_prompt_str.strip():
-                         st.warning("Please enter a question or upload a file for the Ollama model.")
-                         st.stop()
+                        st.warning("Please enter a question or upload a file for the Ollama model.")
+                        st.stop()
 
                     # Execute Ollama command
                     result = subprocess.run(
