@@ -91,7 +91,7 @@ DEFAULT_MODEL_OPTIONS = [
         "supported_file_types": ["txt", "pdf"]
     },
     {
-        "id": "deepseek",
+        "id": "deepseek-r1",
         "name": "DeepSeek",
         "description": (
             "A powerful model from DeepSeek AI, known for its strong coding and reasoning capabilities. "
@@ -126,7 +126,7 @@ PRICING_TABLES = {
         ["Input", "$0 (runs locally)"],
         ["Output", "$0 (runs locally)"]
     ],
-    "deepseek": [
+    "deepseek-r1": [
         ["Input", "$0 (runs locally)"],
         ["Output", "$0 (runs locally)"]
     ]
@@ -191,8 +191,8 @@ def fetch_openai_models():
             if gemma_meta:
                 available.append(gemma_meta)
         # Always add DeepSeek (Ollama) as an option
-        if not any(m["id"] == "deepseek" for m in available):
-            deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek"), None)
+        if not any(m["id"] == "deepseek-r1" for m in available):
+            deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek-r1"), None)
             if deepseek_meta:
                 available.append(deepseek_meta)
         return available
@@ -226,9 +226,9 @@ def fetch_openai_models():
                 "supported_file_types": ["txt", "pdf"]
             })
         # Always add DeepSeek (Ollama) as an option
-        if not any(m["id"] == "deepseek" for m in fallback):
+        if not any(m["id"] == "deepseek-r1" for m in fallback):
             fallback.append({
-                "id": "deepseek",
+                "id": "deepseek-r1",
                 "name": "DeepSeek",
                 "description": (
                     "A powerful model from DeepSeek AI, known for its strong coding and reasoning capabilities. "
@@ -345,7 +345,7 @@ if st.button("Ask"):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
                 # Check if the selected model is an Ollama model or an OpenAI model
-                if not (selected_model["id"] in ["llama3", "gemma", "deepseek"]):
+                if not (selected_model["id"] in ["llama3", "gemma", "deepseek-r1"]):
                     # --- OpenAI Model Path ---
                     messages_payload = [{"role": "user", "content": []}]
                     current_content_parts = []  # To build the list of content parts for the prompt
@@ -397,7 +397,7 @@ if st.button("Ask"):
                     messages_payload[0]["content"] = current_content_parts
 
                 # --- Model Execution Logic ---
-                if selected_model["id"] in ["llama3", "gemma", "deepseek"]:
+                if selected_model["id"] in ["llama3", "gemma", "deepseek-r1"]:
                     # --- Ollama Model Path ---
                     import subprocess  # For running Ollama CLI
                     ollama_model_tag = f"{selected_model['id']}:latest"
