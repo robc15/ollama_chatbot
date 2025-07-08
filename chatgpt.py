@@ -11,7 +11,7 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # Image capable models: A list of model IDs that are known to support image input (multimodal).
 # This list is used to determine if an uploaded image should be processed into base64 data
 # and sent to the model in a multimodal format.
-IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-20241022']
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-20250514']
 
 # System message for better AI responses
 SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
@@ -117,8 +117,8 @@ DEFAULT_MODEL_OPTIONS = [
         "supported_file_types": ["txt", "pdf"]
     },
     {
-        "id": "claude-3-5-sonnet-20241022",
-        "name": "Claude Sonnet 4",
+        "id": "claude-3-5-sonnet-20250514",
+        "name": "Claude 3.5 Sonnet",
         "description": (
             "Anthropic's most capable model. Excels at writing, analysis, coding, and complex reasoning tasks. "
             "Supports vision and can analyze images, documents, and charts with high accuracy."
@@ -156,7 +156,7 @@ PRICING_TABLES = {
         ["Input", "$0 (runs locally)"],
         ["Output", "$0 (runs locally)"]
     ],
-    "claude-3-5-sonnet-20241022": [
+    "claude-3-5-sonnet-20250514": [
         ["Input", "$3.00"],
         ["Output", "$15.00"]
     ]
@@ -225,9 +225,9 @@ def fetch_openai_models():
             deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek-r1"), None)
             if deepseek_meta:
                 available.append(deepseek_meta)
-        # Always add Claude Sonnet 4 as an option if API key is available
-        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20241022" for m in available):
-            claude_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "claude-3-5-sonnet-20241022"), None)
+        # Always add Claude 3.5 Sonnet as an option if API key is available
+        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20250514" for m in available):
+            claude_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "claude-3-5-sonnet-20250514"), None)
             if claude_meta:
                 available.append(claude_meta)
         return available
@@ -273,11 +273,11 @@ def fetch_openai_models():
                 "default": False,
                 "supported_file_types": ["txt", "pdf"]
             })
-        # Always add Claude Sonnet 4 as an option if API key is available
-        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20241022" for m in fallback):
+        # Always add Claude 3.5 Sonnet as an option if API key is available
+        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20250514" for m in fallback):
             fallback.append({
-                "id": "claude-3-5-sonnet-20241022",
-                "name": "Claude Sonnet 4",
+                "id": "claude-3-5-sonnet-20250514",
+                "name": "Claude 3.5 Sonnet",
                 "description": (
                     "Anthropic's most capable model. Excels at writing, analysis, coding, and complex reasoning tasks. "
                     "Supports vision and can analyze images, documents, and charts with high accuracy."
@@ -393,7 +393,7 @@ if st.button("Ask"):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
                 # Check if the selected model is an Ollama model, Claude model, or an OpenAI model
-                if selected_model["id"] == "claude-3-5-sonnet-20241022":
+                if selected_model["id"] == "claude-3-5-sonnet-20250514":
                     # --- Claude Model Path ---
                     if not anthropic_client:
                         st.error("Claude API key not configured. Please set the CLAUDE_API_KEY environment variable.")
