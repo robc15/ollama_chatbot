@@ -11,7 +11,7 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # Image capable models: A list of model IDs that are known to support image input (multimodal).
 # This list is used to determine if an uploaded image should be processed into base64 data
 # and sent to the model in a multimodal format.
-IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-7-sonnet-20250219', 'claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022']
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini']
 
 # System message for better AI responses
 SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
@@ -115,39 +115,6 @@ DEFAULT_MODEL_OPTIONS = [
         "cost": "$0 (runs locally via Ollama)",
         "default": False,
         "supported_file_types": ["txt", "pdf"]
-    },
-    {
-        "id": "claude-3-7-sonnet-20250219",
-        "name": "Claude 3.7 Sonnet",
-        "description": (
-            "Anthropic's Claude 3.7 Sonnet model with enhanced capabilities. Superior at writing, analysis, coding, and complex reasoning tasks. "
-            "Advanced vision support with excellent image understanding and document analysis."
-        ),
-        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
-        "default": False,
-        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
-    },
-    {
-        "id": "claude-sonnet-4-20250514",
-        "name": "Claude Sonnet 4",
-        "description": (
-            "Anthropic's latest flagship model with superior performance. Exceptional at reasoning, analysis, coding, and creative tasks. "
-            "Advanced multimodal capabilities with cutting-edge image understanding and document analysis."
-        ),
-        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
-        "default": False,
-        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
-    },
-    {
-        "id": "claude-3-5-haiku-20241022",
-        "name": "Claude 3.5 Haiku",
-        "description": (
-            "Anthropic's fastest model with enhanced capabilities. Optimized for speed and efficiency with improved reasoning. "
-            "Great for quick responses, coding assistance, and high-volume use cases while being cost-effective."
-        ),
-        "cost": "$1.00 / 1M input tokens, $5.00 / 1M output tokens",
-        "default": False,
-        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     }
 ]
 
@@ -455,7 +422,7 @@ if st.button("Ask"):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
                 # Check if the selected model is an Ollama model, Claude model, or an OpenAI model
-                if selected_model["id"] in ["claude-3-7-sonnet-20250219", "claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"]:
+                if False:  # Claude models temporarily removed
                     # --- Claude Model Path ---
                     if not anthropic_client:
                         st.error("Claude API key not configured. Please set the CLAUDE_API_KEY environment variable.")
