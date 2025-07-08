@@ -12,6 +12,9 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # and sent to the model in a multimodal format.
 IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini']
 
+# System message for better AI responses
+SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
+
 # Title of the app
 st.title("AI Robot 🤖")
 
@@ -347,7 +350,10 @@ if st.button("Ask"):
                 # Check if the selected model is an Ollama model or an OpenAI model
                 if not (selected_model["id"] in ["llama3", "gemma", "deepseek-r1"]):
                     # --- OpenAI Model Path ---
-                    messages_payload = [{"role": "user", "content": []}]
+                    messages_payload = [
+                        {"role": "system", "content": SYSTEM_MESSAGE},
+                        {"role": "user", "content": []}
+                    ]
                     current_content_parts = []  # To build the list of content parts for the prompt
 
                     user_question = user_input.strip()
@@ -402,7 +408,7 @@ if st.button("Ask"):
                     import subprocess  # For running Ollama CLI
                     ollama_model_tag = f"{selected_model['id']}:latest"
 
-                    ollama_prompt_str = ""  # Final prompt string for Ollama
+                    ollama_prompt_str = f"{SYSTEM_MESSAGE}\n\n"  # Final prompt string for Ollama with system message
                     user_question_for_ollama = user_input.strip()
 
                     # Check file type to construct the Ollama prompt appropriately
@@ -468,7 +474,7 @@ if st.button("Ask"):
                         # as it's typically not used for multimodal chat completion calls.
                         reasoning={},
                         tools=[],
-                        temperature=1,
+                        temperature=0.7,
                         max_output_tokens=2048,
                         top_p=1,
                         store=True  # Assuming this is a valid parameter for the client
