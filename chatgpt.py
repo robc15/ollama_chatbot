@@ -11,7 +11,7 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # Image capable models: A list of model IDs that are known to support image input (multimodal).
 # This list is used to determine if an uploaded image should be processed into base64 data
 # and sent to the model in a multimodal format.
-IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-20250109']
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307']
 
 # System message for better AI responses
 SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
@@ -128,13 +128,13 @@ DEFAULT_MODEL_OPTIONS = [
         "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     },
     {
-        "id": "claude-3-5-sonnet-20250109",
-        "name": "Claude 4.0 Sonnet",
+        "id": "claude-3-haiku-20240307",
+        "name": "Claude 3 Haiku",
         "description": (
-            "Anthropic's latest flagship model with superior performance. Excellent at reasoning, analysis, coding, and creative tasks. "
-            "Advanced multimodal capabilities with exceptional image understanding and document analysis."
+            "Anthropic's fastest model, optimized for speed and efficiency. Great for quick responses, simple tasks, and high-volume use cases. "
+            "Supports vision and can analyze images while being very cost-effective."
         ),
-        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
+        "cost": "$0.25 / 1M input tokens, $1.25 / 1M output tokens",
         "default": False,
         "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     }
@@ -171,9 +171,9 @@ PRICING_TABLES = {
         ["Input", "$3.00"],
         ["Output", "$15.00"]
     ],
-    "claude-3-5-sonnet-20250109": [
-        ["Input", "$3.00"],
-        ["Output", "$15.00"]
+    "claude-3-haiku-20240307": [
+        ["Input", "$0.25"],
+        ["Output", "$1.25"]
     ]
 }
 
@@ -245,10 +245,10 @@ def fetch_openai_models():
             claude_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "claude-3-5-sonnet-20241022"), None)
             if claude_meta:
                 available.append(claude_meta)
-        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20250109" for m in available):
-            claude_new_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "claude-3-5-sonnet-20250109"), None)
-            if claude_new_meta:
-                available.append(claude_new_meta)
+        if anthropic_client and not any(m["id"] == "claude-3-haiku-20240307" for m in available):
+            claude_haiku_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "claude-3-haiku-20240307"), None)
+            if claude_haiku_meta:
+                available.append(claude_haiku_meta)
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
@@ -305,15 +305,15 @@ def fetch_openai_models():
                 "default": False,
                 "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
             })
-        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20250109" for m in fallback):
+        if anthropic_client and not any(m["id"] == "claude-3-haiku-20240307" for m in fallback):
             fallback.append({
-                "id": "claude-3-5-sonnet-20250109",
-                "name": "Claude 4.0 Sonnet",
+                "id": "claude-3-haiku-20240307",
+                "name": "Claude 3 Haiku",
                 "description": (
-                    "Anthropic's latest flagship model with superior performance. Excellent at reasoning, analysis, coding, and creative tasks. "
-                    "Advanced multimodal capabilities with exceptional image understanding and document analysis."
+                    "Anthropic's fastest model, optimized for speed and efficiency. Great for quick responses, simple tasks, and high-volume use cases. "
+                    "Supports vision and can analyze images while being very cost-effective."
                 ),
-                "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
+                "cost": "$0.25 / 1M input tokens, $1.25 / 1M output tokens",
                 "default": False,
                 "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
             })
@@ -424,7 +424,7 @@ if st.button("Ask"):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
                 # Check if the selected model is an Ollama model, Claude model, or an OpenAI model
-                if selected_model["id"] in ["claude-3-5-sonnet-20241022", "claude-3-5-sonnet-20250109"]:
+                if selected_model["id"] in ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"]:
                     # --- Claude Model Path ---
                     if not anthropic_client:
                         st.error("Claude API key not configured. Please set the CLAUDE_API_KEY environment variable.")
