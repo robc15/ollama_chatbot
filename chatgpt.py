@@ -1,5 +1,6 @@
 import streamlit as st
 from openai import OpenAI
+from anthropic import Anthropic
 import time
 import os
 import base64
@@ -10,7 +11,7 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # Image capable models: A list of model IDs that are known to support image input (multimodal).
 # This list is used to determine if an uploaded image should be processed into base64 data
 # and sent to the model in a multimodal format.
-IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini']
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-20241022']
 
 # System message for better AI responses
 SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
@@ -35,6 +36,17 @@ def load_model():
 
 # Load the model (this will run only once per session)
 client = load_model()
+
+# Initialize Anthropic client
+@st.cache_resource
+def load_anthropic_client():
+    claude_api_key = os.getenv('CLAUDE_API_KEY')
+    if not claude_api_key:
+        st.warning("CLAUDE_API_KEY environment variable not set. Claude models will not be available.")
+        return None
+    return Anthropic(api_key=claude_api_key)
+
+anthropic_client = load_anthropic_client()
 
 # Model options with descriptions and cost per usage
 DEFAULT_MODEL_OPTIONS = [
@@ -103,6 +115,17 @@ DEFAULT_MODEL_OPTIONS = [
         "cost": "$0 (runs locally via Ollama)",
         "default": False,
         "supported_file_types": ["txt", "pdf"]
+    },
+    {
+        "id": "claude-3-5-sonnet-20241022",
+        "name": "Claude Sonnet 4",
+        "description": (
+            "Anthropic's most capable model. Excels at writing, analysis, coding, and complex reasoning tasks. "
+            "Supports vision and can analyze images, documents, and charts with high accuracy."
+        ),
+        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
+        "default": False,
+        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     }
 ]
 
@@ -132,6 +155,10 @@ PRICING_TABLES = {
     "deepseek-r1": [
         ["Input", "$0 (runs locally)"],
         ["Output", "$0 (runs locally)"]
+    ],
+    "claude-3-5-sonnet-20241022": [
+        ["Input", "$3.00"],
+        ["Output", "$15.00"]
     ]
 }
 
@@ -198,6 +225,11 @@ def fetch_openai_models():
             deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek-r1"), None)
             if deepseek_meta:
                 available.append(deepseek_meta)
+        # Always add Claude Sonnet 4 as an option if API key is available
+        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20241022" for m in available):
+            claude_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "claude-3-5-sonnet-20241022"), None)
+            if claude_meta:
+                available.append(claude_meta)
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
@@ -240,6 +272,19 @@ def fetch_openai_models():
                 "cost": "$0 (runs locally via Ollama)",
                 "default": False,
                 "supported_file_types": ["txt", "pdf"]
+            })
+        # Always add Claude Sonnet 4 as an option if API key is available
+        if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20241022" for m in fallback):
+            fallback.append({
+                "id": "claude-3-5-sonnet-20241022",
+                "name": "Claude Sonnet 4",
+                "description": (
+                    "Anthropic's most capable model. Excels at writing, analysis, coding, and complex reasoning tasks. "
+                    "Supports vision and can analyze images, documents, and charts with high accuracy."
+                ),
+                "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
+                "default": False,
+                "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
             })
         return fallback
 
@@ -347,8 +392,86 @@ if st.button("Ask"):
         with st.spinner('Processing...'):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
-                # Check if the selected model is an Ollama model or an OpenAI model
-                if not (selected_model["id"] in ["llama3", "gemma", "deepseek-r1"]):
+                # Check if the selected model is an Ollama model, Claude model, or an OpenAI model
+                if selected_model["id"] == "claude-3-5-sonnet-20241022":
+                    # --- Claude Model Path ---
+                    if not anthropic_client:
+                        st.error("Claude API key not configured. Please set the CLAUDE_API_KEY environment variable.")
+                        st.stop()
+                    
+                    messages_payload = []
+                    user_question = user_input.strip()
+                    
+                    # Case 1: Image uploaded and model is image-capable
+                    if image_base64_data:
+                        content_parts = []
+                        
+                        # Add user's text question
+                        if user_question:
+                            content_parts.append({
+                                "type": "text",
+                                "text": user_question
+                            })
+                        else:
+                            content_parts.append({
+                                "type": "text",
+                                "text": f"Describe this image ({uploaded_file.name})."
+                            })
+                        
+                        # Add image data
+                        mime_type = file_type if file_type and file_type.startswith("image/") else "image/jpeg"
+                        
+                        content_parts.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mime_type,
+                                "data": image_base64_data
+                            }
+                        })
+                        
+                        messages_payload.append({
+                            "role": "user",
+                            "content": content_parts
+                        })
+                    
+                    # Case 2: Text or PDF file content is available
+                    elif file_content:
+                        combined_text = f"Analyze the following file content:\n\n{file_content}\n\nUser question: {user_question}"
+                        messages_payload.append({
+                            "role": "user",
+                            "content": combined_text
+                        })
+                    
+                    # Case 3: Only user text input
+                    else:
+                        if user_question:
+                            messages_payload.append({
+                                "role": "user",
+                                "content": user_question
+                            })
+                        else:
+                            st.warning("Please enter a question or upload a file.")
+                            st.stop()
+                    
+                    # Make the API call to Claude
+                    response = anthropic_client.messages.create(
+                        model=selected_model["id"],
+                        max_tokens=2048,
+                        temperature=0.7,
+                        system=SYSTEM_MESSAGE,
+                        messages=messages_payload
+                    )
+                    
+                    # Display the response
+                    if response.content and len(response.content) > 0:
+                        output_text = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content[0])
+                        st.subheader("Model Response:")
+                        st.write(output_text)
+                    else:
+                        st.write("Sorry, no response from the model.")
+                
+                elif not (selected_model["id"] in ["llama3", "gemma", "deepseek-r1"]):
                     # --- OpenAI Model Path ---
                     messages_payload = [
                         {"role": "system", "content": SYSTEM_MESSAGE},
