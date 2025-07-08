@@ -129,10 +129,10 @@ DEFAULT_MODEL_OPTIONS = [
     },
     {
         "id": "claude-3-5-sonnet-20250109",
-        "name": "Claude 3.5 Sonnet (New)",
+        "name": "Claude 4.0 Sonnet",
         "description": (
-            "Anthropic's latest Claude 3.5 Sonnet model with enhanced capabilities. Excellent at reasoning, analysis, coding, and creative tasks. "
-            "Advanced multimodal capabilities with superior image understanding and document analysis."
+            "Anthropic's latest flagship model with superior performance. Excellent at reasoning, analysis, coding, and creative tasks. "
+            "Advanced multimodal capabilities with exceptional image understanding and document analysis."
         ),
         "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
         "default": False,
@@ -308,10 +308,10 @@ def fetch_openai_models():
         if anthropic_client and not any(m["id"] == "claude-3-5-sonnet-20250109" for m in fallback):
             fallback.append({
                 "id": "claude-3-5-sonnet-20250109",
-                "name": "Claude 3.5 Sonnet (New)",
+                "name": "Claude 4.0 Sonnet",
                 "description": (
-                    "Anthropic's latest Claude 3.5 Sonnet model with enhanced capabilities. Excellent at reasoning, analysis, coding, and creative tasks. "
-                    "Advanced multimodal capabilities with superior image understanding and document analysis."
+                    "Anthropic's latest flagship model with superior performance. Excellent at reasoning, analysis, coding, and creative tasks. "
+                    "Advanced multimodal capabilities with exceptional image understanding and document analysis."
                 ),
                 "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
                 "default": False,
