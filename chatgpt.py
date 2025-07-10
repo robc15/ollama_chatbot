@@ -11,7 +11,7 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # Image capable models: A list of model IDs that are known to support image input (multimodal).
 # This list is used to determine if an uploaded image should be processed into base64 data
 # and sent to the model in a multimodal format.
-IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-latest', 'claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-sonnet-4-20250514']
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-haiku-latest', 'claude-sonnet-4-20250514']
 
 # System message for better AI responses
 SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
@@ -85,32 +85,10 @@ DEFAULT_MODEL_OPTIONS = [
     # Premium Anthropic Models
     {
         "id": "claude-sonnet-4-20250514",
-        "name": "Claude 3.5 Sonnet (New)",
+        "name": "Claude Sonnet 4.0",
         "description": (
-            "Anthropic's most advanced Claude 3.5 Sonnet model with superior reasoning, analysis, and coding capabilities. "
-            "Excels at complex problem-solving, creative tasks, and multimodal understanding with excellent vision support."
-        ),
-        "cost": "$15.00 / 1M input tokens, $75.00 / 1M output tokens",
-        "default": False,
-        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
-    },
-    {
-        "id": "claude-3-5-sonnet-latest",
-        "name": "Claude 3.5 Sonnet",
-        "description": (
-            "Anthropic's Claude 3.5 Sonnet model with enhanced capabilities. Superior at writing, analysis, coding, and complex reasoning tasks. "
-            "Advanced vision support with excellent image understanding and document analysis."
-        ),
-        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
-        "default": False,
-        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
-    },
-    {
-        "id": "claude-3-7-sonnet-latest",
-        "name": "Claude 3.7 Sonnet",
-        "description": (
-            "Anthropic's Claude 3.7 Sonnet model with enhanced capabilities and extended thinking mode. Superior at writing, analysis, coding, and complex reasoning tasks. "
-            "Advanced vision support with excellent image understanding and document analysis."
+            "Anthropic's Claude Sonnet 4.0 with improved reasoning and intelligence capabilities. "
+            "Enhanced tool use accuracy and superior performance on complex problem-solving, creative tasks, and multimodal understanding."
         ),
         "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
         "default": False,
@@ -191,8 +169,8 @@ PRICING_TABLES = {
         ["Output", "$0 (runs locally)"]
     ],
     "claude-sonnet-4-20250514": [
-        ["Input", "$15.00"],
-        ["Output", "$75.00"]
+        ["Input", "$3.00"],
+        ["Output", "$15.00"]
     ],
     "claude-3-5-haiku-latest": [
         ["Input", "$0.80"],
@@ -251,10 +229,10 @@ def fetch_claude_models():
                 })
                 found_model_ids.add(m.id)
 
-        # Always ensure Claude 3.5 Haiku is included
-        haiku_model = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "claude-3-5-haiku-latest"), None)
-        if haiku_model and "claude-3-5-haiku-latest" not in found_model_ids:
-            available_claude.append(haiku_model)
+        # Always ensure all Claude models from DEFAULT_MODEL_OPTIONS are included
+        for claude_model in DEFAULT_MODEL_OPTIONS:
+            if claude_model["id"].startswith("claude-") and claude_model["id"] not in found_model_ids:
+                available_claude.append(claude_model)
 
         # If no models found at all, use fallback
         if not available_claude:
@@ -289,6 +267,13 @@ def fetch_openai_models():
         # Always ensure at least the default model is present
         if not any(m["default"] for m in available):
             available.insert(0, DEFAULT_MODEL_OPTIONS[0])
+        
+        # Add Claude models right after OpenAI models
+        claude_models = fetch_claude_models()
+        for claude_model in claude_models:
+            if not any(m["id"] == claude_model["id"] for m in available):
+                available.append(claude_model)
+        
         # Always add Llama 3 (Ollama) as an option
         if not any(m["id"] == "llama3" for m in available):
             llama3_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "llama3"), None)
@@ -304,59 +289,11 @@ def fetch_openai_models():
             deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek-r1"), None)
             if deepseek_meta:
                 available.append(deepseek_meta)
-        # Always add Claude models as options (dynamically fetched)
-        claude_models = fetch_claude_models()
-        for claude_model in claude_models:
-            if not any(m["id"] == claude_model["id"] for m in available):
-                available.append(claude_model)
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
-        # Always add Llama 3 (Ollama) as an option
+        # Use the properly ordered DEFAULT_MODEL_OPTIONS as fallback
         fallback = DEFAULT_MODEL_OPTIONS.copy()
-        if not any(m["id"] == "llama3" for m in fallback):
-            fallback.append({
-                "id": "llama3",
-                "name": "Llama 3",
-                "description": (
-                    "Meta's Llama 3 model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
-                    "Best for general chat, coding, and experimentation without cloud costs."
-                ),
-                "cost": "$0 (runs locally via Ollama)",
-                "default": False,
-                "supported_file_types": ["txt", "pdf"]
-            })
-        # Always add Gemma (Ollama) as an option
-        if not any(m["id"] == "gemma" for m in fallback):
-            fallback.append({
-                "id": "gemma",
-                "name": "Gemma",
-                "description": (
-                    "Google's Gemma model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
-                    "Best for general chat, coding, and experimentation without cloud costs."
-                ),
-                "cost": "$0 (runs locally via Ollama)",
-                "default": False,
-                "supported_file_types": ["txt", "pdf"]
-            })
-        # Always add DeepSeek (Ollama) as an option
-        if not any(m["id"] == "deepseek-r1" for m in fallback):
-            fallback.append({
-                "id": "deepseek-r1",
-                "name": "DeepSeek",
-                "description": (
-                    "A powerful model from DeepSeek AI, known for its strong coding and reasoning capabilities. "
-                    "Runs locally via Ollama."
-                ),
-                "cost": "$0 (runs locally via Ollama)",
-                "default": False,
-                "supported_file_types": ["txt", "pdf"]
-            })
-        # Always add Claude models as options (fallback)
-        claude_models = fetch_claude_models()
-        for claude_model in claude_models:
-            if not any(m["id"] == claude_model["id"] for m in fallback):
-                fallback.append(claude_model)
         return fallback
 
 
@@ -572,7 +509,7 @@ if st.button("Ask"):
                         st.write(output_text)
                     else:
                         st.write("Sorry, no response from the model.")
-                elif selected_model["id"] in ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-sonnet-4-20250514"]:
+                elif selected_model["id"] in ["claude-3-5-haiku-latest", "claude-sonnet-4-20250514"]:
                     # --- Claude Model API Call ---
                     # Build messages for Anthropic API
                     messages = []
