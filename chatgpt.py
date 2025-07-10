@@ -1,5 +1,6 @@
 import streamlit as st
 from openai import OpenAI
+from anthropic import Anthropic
 import time
 import os
 import base64
@@ -10,7 +11,7 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # Image capable models: A list of model IDs that are known to support image input (multimodal).
 # This list is used to determine if an uploaded image should be processed into base64 data
 # and sent to the model in a multimodal format.
-IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest']
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-sonnet-4-20250514']
 
 # System message for better AI responses
 SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
@@ -32,9 +33,16 @@ def load_model():
     time.sleep(2)  # Simulating the model loading time
     return OpenAI()
 
+@st.cache_resource
+def load_anthropic_client():
+    # Initialize Anthropic client with API key from environment
+    time.sleep(1)  # Simulating the model loading time
+    return Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 
-# Load the model (this will run only once per session)
+
+# Load the models (this will run only once per session)
 client = load_model()
+anthropic_client = load_anthropic_client()
 
 
 # Model options with descriptions and cost per usage
@@ -126,6 +134,17 @@ DEFAULT_MODEL_OPTIONS = [
         "cost": "$1.00 / 1M input tokens, $5.00 / 1M output tokens",
         "default": False,
         "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
+    },
+    {
+        "id": "claude-sonnet-4-20250514",
+        "name": "Claude Sonnet 4",
+        "description": (
+            "Anthropic's most advanced model with superior reasoning, analysis, and coding capabilities. "
+            "Excels at complex problem-solving, creative tasks, and multimodal understanding with excellent vision support."
+        ),
+        "cost": "$15.00 / 1M input tokens, $75.00 / 1M output tokens",
+        "default": False,
+        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     }
 ]
 
@@ -155,6 +174,10 @@ PRICING_TABLES = {
     "deepseek-r1": [
         ["Input", "$0 (runs locally)"],
         ["Output", "$0 (runs locally)"]
+    ],
+    "claude-sonnet-4-20250514": [
+        ["Input", "$15.00"],
+        ["Output", "$75.00"]
     ]
 }
 
@@ -221,6 +244,13 @@ def fetch_openai_models():
             deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek-r1"), None)
             if deepseek_meta:
                 available.append(deepseek_meta)
+        # Always add Claude models as options
+        claude_model_ids = ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-sonnet-4-20250514"]
+        for claude_id in claude_model_ids:
+            if not any(m["id"] == claude_id for m in available):
+                claude_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == claude_id), None)
+                if claude_meta:
+                    available.append(claude_meta)
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
@@ -474,6 +504,60 @@ if st.button("Ask"):
                         text=True
                     )
                     output_text = result.stdout.strip() if result.stdout else None
+                    if output_text:
+                        st.subheader("Model Response:")
+                        st.write(output_text)
+                    else:
+                        st.write("Sorry, no response from the model.")
+                elif selected_model["id"] in ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-sonnet-4-20250514"]:
+                    # --- Claude Model API Call ---
+                    # Build messages for Anthropic API
+                    messages = []
+                    
+                    # Handle different content types for Claude
+                    if file_type and file_type.startswith("image/") and selected_model["id"] in IMAGE_CAPABLE_MODELS:
+                        # Image with text
+                        content_parts = [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": file_type,
+                                    "data": base64_data
+                                }
+                            }
+                        ]
+                        if user_question:
+                            content_parts.append({"type": "text", "text": user_question})
+                        else:
+                            content_parts.append({"type": "text", "text": "What do you see in this image?"})
+                        messages.append({"role": "user", "content": content_parts})
+                    elif file_content:
+                        # Text or PDF file content
+                        if user_question:
+                            text_content = f"Analyze the following file content:\n\n{file_content}\n\nUser question: {user_question}"
+                        else:
+                            text_content = f"Analyze the following file content:\n\n{file_content}"
+                        messages.append({"role": "user", "content": text_content})
+                    else:
+                        # Only user text input
+                        if user_question:
+                            messages.append({"role": "user", "content": user_question})
+                        else:
+                            st.warning("Please enter a question or upload a file.")
+                            st.stop()
+                    
+                    # Make the API call to Anthropic
+                    response = anthropic_client.messages.create(
+                        model=selected_model["id"],
+                        max_tokens=2048,
+                        temperature=0.7,
+                        system=SYSTEM_MESSAGE,
+                        messages=messages
+                    )
+                    
+                    # Display the model's response
+                    output_text = response.content[0].text if response.content else None
                     if output_text:
                         st.subheader("Model Response:")
                         st.write(output_text)
