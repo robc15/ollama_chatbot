@@ -14,7 +14,10 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-haiku-latest', 'claude-sonnet-4-20250514']
 
 # System message for better AI responses
-SYSTEM_MESSAGE = "You are a helpful, concise assistant that speaks clearly and answers with expertise. Provide accurate, well-structured responses that directly address the user's question."
+SYSTEM_MESSAGE = (
+    "You are a helpful, concise assistant that speaks clearly and answers with expertise. "
+    "Provide accurate, well-structured responses that directly address the user's question."
+)
 
 # Title of the app
 st.title("AI Robot 🤖")
@@ -267,13 +270,13 @@ def fetch_openai_models():
         # Always ensure at least the default model is present
         if not any(m["default"] for m in available):
             available.insert(0, DEFAULT_MODEL_OPTIONS[0])
-        
+
         # Add Claude models right after OpenAI models
         claude_models = fetch_claude_models()
         for claude_model in claude_models:
             if not any(m["id"] == claude_model["id"] for m in available):
                 available.append(claude_model)
-        
+
         # Always add Llama 3 (Ollama) as an option
         if not any(m["id"] == "llama3" for m in available):
             llama3_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "llama3"), None)
