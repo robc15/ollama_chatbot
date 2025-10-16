@@ -734,7 +734,7 @@ if ask_clicked:
 
                         # TTS component with built-in controls
                         tts_html = f"""
-                        <div id="tts-container" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
+                        <div id="tts-container" style="padding: 10px; background-color: #000000; border-radius: 8px;">
                             <style>
                                 .tts-button {{
                                     background-color: #ff4b4b;
@@ -757,6 +757,7 @@ if ask_clicked:
                                 #tts-status {{
                                     margin-top: 10px;
                                     font-size: 14px;
+                                    color: #ffffff;
                                 }}
                             </style>
                             <button class="tts-button" id="speakBtn" onclick="speakText()">🔊 Read Response</button>
@@ -878,7 +879,7 @@ if ask_clicked:
 
                         # TTS component with built-in controls
                         tts_html = f"""
-                        <div id="tts-container-claude" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
+                        <div id="tts-container-claude" style="padding: 10px; background-color: #000000; border-radius: 8px;">
                             <style>
                                 .tts-button {{
                                     background-color: #ff4b4b;
@@ -901,6 +902,7 @@ if ask_clicked:
                                 #tts-status-claude {{
                                     margin-top: 10px;
                                     font-size: 14px;
+                                    color: #ffffff;
                                 }}
                             </style>
                             <button class="tts-button" id="speakBtnClaude" onclick="speakTextClaude()">🔊 Read Response</button>
@@ -1015,7 +1017,7 @@ if ask_clicked:
 
                         # TTS component with built-in controls
                         tts_html = f"""
-                        <div id="tts-container-openai" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
+                        <div id="tts-container-openai" style="padding: 10px; background-color: #000000; border-radius: 8px;">
                             <style>
                                 .tts-button {{
                                     background-color: #ff4b4b;
@@ -1038,6 +1040,7 @@ if ask_clicked:
                                 #tts-status-openai {{
                                     margin-top: 10px;
                                     font-size: 14px;
+                                    color: #ffffff;
                                 }}
                             </style>
                             <button class="tts-button" id="speakBtnOpenAI" onclick="speakTextOpenAI()">🔊 Read Response</button>
