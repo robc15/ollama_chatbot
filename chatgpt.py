@@ -729,6 +729,9 @@ if ask_clicked:
                         # Add text-to-speech for the response
                         st.markdown("### 🔊 Voice Output")
 
+                        # Escape special characters for JavaScript
+                        escaped_text = output_text.replace('`', r'\`').replace('\n', ' ').replace('$', r'\$')
+
                         # TTS component with built-in controls
                         tts_html = f"""
                         <div id="tts-container" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
@@ -765,7 +768,7 @@ if ask_clicked:
                                         // Cancel any ongoing speech
                                         window.speechSynthesis.cancel();
 
-                                        const text = `{output_text.replace('`', '\\`').replace('\n', ' ').replace('$', '\\$')}`;
+                                        const text = `{escaped_text}`;
                                         const utterance = new SpeechSynthesisUtterance(text);
 
                                         utterance.rate = 0.9;
@@ -870,6 +873,9 @@ if ask_clicked:
                         # Add text-to-speech for the response
                         st.markdown("### 🔊 Voice Output")
 
+                        # Escape special characters for JavaScript
+                        escaped_text = output_text.replace('`', r'\`').replace('\n', ' ').replace('$', r'\$')
+
                         # TTS component with built-in controls
                         tts_html = f"""
                         <div id="tts-container-claude" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
@@ -906,7 +912,7 @@ if ask_clicked:
                                         // Cancel any ongoing speech
                                         window.speechSynthesis.cancel();
 
-                                        const text = `{output_text.replace('`', '\\`').replace('\n', ' ').replace('$', '\\$')}`;
+                                        const text = `{escaped_text}`;
                                         const utterance = new SpeechSynthesisUtterance(text);
 
                                         utterance.rate = 0.9;
@@ -1004,6 +1010,9 @@ if ask_clicked:
                         # Add text-to-speech for the response
                         st.markdown("### 🔊 Voice Output")
 
+                        # Escape special characters for JavaScript
+                        escaped_text = output_text.replace('`', r'\`').replace('\n', ' ').replace('$', r'\$')
+
                         # TTS component with built-in controls
                         tts_html = f"""
                         <div id="tts-container-openai" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
@@ -1040,7 +1049,7 @@ if ask_clicked:
                                         // Cancel any ongoing speech
                                         window.speechSynthesis.cancel();
 
-                                        const text = `{output_text.replace('`', '\\`').replace('\n', ' ').replace('$', '\\$')}`;
+                                        const text = `{escaped_text}`;
                                         const utterance = new SpeechSynthesisUtterance(text);
 
                                         utterance.rate = 0.9;
