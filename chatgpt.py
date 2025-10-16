@@ -4,6 +4,8 @@ from anthropic import Anthropic
 import time
 import os
 import base64
+import streamlit.components.v1 as components
+import tempfile
 
 # Force Streamlit to run on port 8502
 os.environ["STREAMLIT_SERVER_PORT"] = "8502"
@@ -11,7 +13,7 @@ os.environ["STREAMLIT_SERVER_PORT"] = "8502"
 # Image capable models: A list of model IDs that are known to support image input (multimodal).
 # This list is used to determine if an uploaded image should be processed into base64 data
 # and sent to the model in a multimodal format.
-IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-haiku-latest', 'claude-sonnet-4-20250514']
+IMAGE_CAPABLE_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-sonnet-4-20250514']
 
 # System message for better AI responses
 SYSTEM_MESSAGE = (
@@ -25,8 +27,32 @@ st.title("AI Robot 🤖")
 # Description of the app
 st.write("Enter a question below and get a response from the model!")
 
-# Text input for the user question
-user_input = st.text_area("Your Question", "", height=150)
+# Initialize session state for user input and voice mode
+if 'user_input' not in st.session_state:
+    st.session_state.user_input = ""
+if 'voice_mode' not in st.session_state:
+    st.session_state.voice_mode = False
+if 'use_local_whisper' not in st.session_state:
+    st.session_state.use_local_whisper = True  # Default to local for cost savings
+if 'audio_counter' not in st.session_state:
+    st.session_state.audio_counter = 0
+
+# Voice/Text mode toggle
+st.markdown("### 💬 Input Mode")
+voice_mode = st.button("🎤 Voice Mode" if not st.session_state.voice_mode else "📝 Text Mode", use_container_width=True)
+
+if voice_mode:
+    st.session_state.voice_mode = not st.session_state.voice_mode
+    st.rerun()
+
+# Text input (only show when not in voice mode)
+if not st.session_state.voice_mode:
+    user_input = st.text_area("Your Question", value=st.session_state.user_input, height=150, key="user_input_area")
+    # Update session state when text area changes
+    if user_input != st.session_state.user_input:
+        st.session_state.user_input = user_input
+else:
+    user_input = st.session_state.user_input
 
 
 # Cache the model load process to optimize performance (only run once per session)
@@ -44,14 +70,137 @@ def load_anthropic_client():
     return Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 
 
+@st.cache_resource
+def load_whisper_model():
+    """Load Whisper Base model for local transcription"""
+    import torch
+    from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+    model_id = "openai/whisper-base"
+
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True
+    )
+    model.to(device)
+    processor = AutoProcessor.from_pretrained(model_id)
+
+    pipe = pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        torch_dtype=torch_dtype,
+        device=device,
+    )
+
+    return pipe
+
+
 # Load the models (this will run only once per session)
 client = load_model()
 anthropic_client = load_anthropic_client()
 
+# Voice input functionality using OpenAI Whisper (only show in voice mode)
+if st.session_state.voice_mode:
+    st.markdown("### 🎤 Voice Input (Powered by Whisper)")
+
+    def transcribe_audio_with_whisper_api(audio_bytes, openai_client):
+        """Transcribe audio using OpenAI Whisper API"""
+        try:
+            # Create a temporary file to save the audio
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+                tmp_file.write(audio_bytes)
+                tmp_file.flush()
+
+                # Open the file and send to Whisper
+                with open(tmp_file.name, "rb") as audio_file:
+                    transcript = openai_client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        language="en"  # Can be removed to auto-detect language
+                    )
+
+                # Clean up the temporary file
+                os.unlink(tmp_file.name)
+
+                return transcript.text
+
+        except Exception as e:
+            st.error(f"Transcription error: {e}")
+            return None
+
+    def transcribe_audio_with_local_whisper(audio_bytes):
+        """Transcribe audio using local Whisper Base model"""
+        try:
+            # Create a temporary file to save the audio
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+                tmp_file.write(audio_bytes)
+                tmp_file.flush()
+
+                # Load the local Whisper model (cached)
+                whisper_pipe = load_whisper_model()
+
+                # Transcribe the audio file
+                result = whisper_pipe(tmp_file.name)
+
+                # Clean up the temporary file
+                os.unlink(tmp_file.name)
+
+                return result["text"]
+
+        except Exception as e:
+            st.error(f"Local transcription error: {e}")
+            return None
+
+    # Use Streamlit's native audio input widget
+    st.markdown("**Click 'Browse files' or drag and drop to upload a pre-recorded audio file, or use your device's recorder if available:**")
+
+    # Generate a unique key for the audio input based on session to reset after processing
+    audio_key = f"audio_input_{st.session_state.get('audio_counter', 0)}"
+
+    audio_file = st.audio_input("Record your voice", key=audio_key)
+
+    # Process the audio file if one is provided
+    if audio_file is not None:
+        # Read the audio bytes from the file object
+        audio_bytes = audio_file.getvalue()
+
+        # Determine transcription method
+        transcription_method = "Local Whisper Base (FREE)" if st.session_state.use_local_whisper else "OpenAI Whisper API"
+
+        # Transcribe the audio
+        with st.spinner(f"🔄 Transcribing audio using {transcription_method}..."):
+            if st.session_state.use_local_whisper:
+                transcription = transcribe_audio_with_local_whisper(audio_bytes)
+            else:
+                transcription = transcribe_audio_with_whisper_api(audio_bytes, client)
+
+        if transcription:
+            st.success("✅ Transcription complete!")
+
+            # Display the transcription
+            st.markdown("**Transcribed text:**")
+            st.info(transcription)
+
+            # In voice mode, automatically process the input
+            st.info("🚀 Automatically sending to AI...")
+            st.session_state.user_input = transcription
+            # Increment audio counter to reset the component
+            st.session_state.audio_counter += 1
+            # Force a rerun to trigger the auto-processing
+            st.rerun()
+        else:
+            st.error("❌ Could not transcribe audio. Please try again.")
+            # Increment audio counter to allow retry
+            st.session_state.audio_counter += 1
+
 
 # Model options with descriptions and cost per usage
 DEFAULT_MODEL_OPTIONS = [
-    # Premium OpenAI Models
+    # Tier 1: Premium Reasoning & Complex Tasks
     {
         "id": "gpt-4.1",
         "name": "OpenAI GPT-4.1",
@@ -64,36 +213,59 @@ DEFAULT_MODEL_OPTIONS = [
         "supported_file_types": ["txt", "pdf"]
     },
     {
+        "id": "claude-sonnet-4-20250514",
+        "name": "Claude Sonnet 4.0",
+        "description": (
+            "Anthropic's flagship model with improved reasoning and intelligence. "
+            "Superior performance on complex problem-solving, creative tasks, and multimodal understanding."
+        ),
+        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
+        "default": False,
+        "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
+    },
+    {
+        "id": "o1-mini",
+        "name": "OpenAI o1-mini",
+        "description": (
+            "OpenAI's reasoning model optimized for STEM tasks. Excels at coding, math, and logical problem-solving. "
+            "Faster and more cost-effective than o1 while maintaining strong reasoning capabilities."
+        ),
+        "cost": "$3.00 / 1M input tokens, $12.00 / 1M output tokens",
+        "default": False,
+        "supported_file_types": ["txt", "pdf"]
+    },
+    # Tier 2: Balanced Performance (Multimodal)
+    {
         "id": "gpt-4o",
         "name": "OpenAI GPT-4o",
         "description": (
-            "OpenAI's new Omni model. Multimodal (text, vision, audio), extremely fast, and cost-effective. "
-            "Great for real-time and broad applications."
+            "OpenAI's Omni model. Multimodal (text, vision), extremely fast, and cost-effective. "
+            "Great for real-time applications and balanced performance."
         ),
         "cost": "$5.00 / 1M input tokens, $15.00 / 1M output tokens",
         "default": False,
         "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     },
     {
-        "id": "gpt-4o-mini",
-        "name": "OpenAI GPT-4o Mini",
+        "id": "claude-3-5-sonnet-latest",
+        "name": "Claude 3.5 Sonnet",
         "description": (
-            "A lighter, faster, and even more affordable version of GPT-4o. "
-            "Ideal for high-volume, low-latency tasks where cost is critical."
+            "Anthropic's best coding model with excellent reasoning. Industry-leading for software development, "
+            "code generation, and technical problem-solving."
         ),
-        "cost": "$1.00 / 1M input tokens, $2.00 / 1M output tokens",
+        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
         "default": False,
         "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     },
-    # Premium Anthropic Models
+    # Tier 3: Budget/High-Volume
     {
-        "id": "claude-sonnet-4-20250514",
-        "name": "Claude Sonnet 4.0",
+        "id": "gpt-4o-mini",
+        "name": "OpenAI GPT-4o Mini",
         "description": (
-            "Anthropic's Claude Sonnet 4.0 with improved reasoning and intelligence capabilities. "
-            "Enhanced tool use accuracy and superior performance on complex problem-solving, creative tasks, and multimodal understanding."
+            "Lighter, faster, affordable version of GPT-4o with vision support. "
+            "Ideal for high-volume, low-latency tasks where cost is critical."
         ),
-        "cost": "$3.00 / 1M input tokens, $15.00 / 1M output tokens",
+        "cost": "$1.00 / 1M input tokens, $2.00 / 1M output tokens",
         "default": False,
         "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     },
@@ -101,41 +273,52 @@ DEFAULT_MODEL_OPTIONS = [
         "id": "claude-3-5-haiku-latest",
         "name": "Claude 3.5 Haiku",
         "description": (
-            "Anthropic's fastest model with enhanced capabilities. Optimized for speed and efficiency with improved reasoning. "
-            "Great for quick responses, coding assistance, and high-volume use cases while being cost-effective."
+            "Anthropic's fastest model with vision support. Optimized for speed and efficiency. "
+            "Great for quick responses, coding assistance, and high-volume use cases."
         ),
         "cost": "$0.80 / 1M input tokens, $4.00 / 1M output tokens",
         "default": False,
         "supported_file_types": ["txt", "pdf", "png", "jpg", "jpeg"]
     },
-    # Open Source Models
-    {
-        "id": "llama3",
-        "name": "Llama 3",
-        "description": (
-            "Meta's Llama 3 model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
-            "Best for general chat, coding, and experimentation without cloud costs."
-        ),
-        "cost": "$0 (runs locally via Ollama)",
-        "default": False,
-        "supported_file_types": ["txt", "pdf"]
-    },
-    {
-        "id": "gemma",
-        "name": "Gemma",
-        "description": (
-            "Google's Gemma model, running locally via Ollama. Great for privacy, offline use, and fast responses on supported hardware. "
-            "Best for general chat, coding, and experimentation without cloud costs."
-        ),
-        "cost": "$0 (runs locally via Ollama)",
-        "default": False,
-        "supported_file_types": ["txt", "pdf"]
-    },
+    # Tier 4: Local/Privacy-Focused (Free)
     {
         "id": "deepseek-r1",
-        "name": "DeepSeek",
+        "name": "DeepSeek R1",
         "description": (
-            "A powerful model from DeepSeek AI, known for its strong coding and reasoning capabilities. "
+            "Powerful local model from DeepSeek AI with strong reasoning and coding capabilities. "
+            "Competitive with GPT-4 on many tasks. Runs locally via Ollama."
+        ),
+        "cost": "$0 (runs locally via Ollama)",
+        "default": False,
+        "supported_file_types": ["txt", "pdf"]
+    },
+    {
+        "id": "llama3.3",
+        "name": "Llama 3.3",
+        "description": (
+            "Meta's latest Llama model, running locally via Ollama. Excellent general-purpose model "
+            "for chat, coding, and analysis. Great for privacy and offline use."
+        ),
+        "cost": "$0 (runs locally via Ollama)",
+        "default": False,
+        "supported_file_types": ["txt", "pdf"]
+    },
+    {
+        "id": "qwen2.5-coder",
+        "name": "Qwen 2.5 Coder",
+        "description": (
+            "Alibaba's coding-focused model with strong multilingual capabilities. Excellent for code generation, "
+            "debugging, and technical documentation. Runs locally via Ollama."
+        ),
+        "cost": "$0 (runs locally via Ollama)",
+        "default": False,
+        "supported_file_types": ["txt", "pdf"]
+    },
+    {
+        "id": "mistral",
+        "name": "Mistral",
+        "description": (
+            "Well-balanced open-source model from Mistral AI. Strong at reasoning, coding, and general tasks. "
             "Runs locally via Ollama."
         ),
         "cost": "$0 (runs locally via Ollama)",
@@ -159,25 +342,37 @@ PRICING_TABLES = {
         ["Input", "$1.00"],
         ["Output", "$2.00"]
     ],
-    "llama3": [
-        ["Input", "$0 (runs locally)"],
-        ["Output", "$0 (runs locally)"]
-    ],
-    "gemma": [
-        ["Input", "$0 (runs locally)"],
-        ["Output", "$0 (runs locally)"]
-    ],
-    "deepseek-r1": [
-        ["Input", "$0 (runs locally)"],
-        ["Output", "$0 (runs locally)"]
+    "o1-mini": [
+        ["Input", "$3.00"],
+        ["Output", "$12.00"]
     ],
     "claude-sonnet-4-20250514": [
+        ["Input", "$3.00"],
+        ["Output", "$15.00"]
+    ],
+    "claude-3-5-sonnet-latest": [
         ["Input", "$3.00"],
         ["Output", "$15.00"]
     ],
     "claude-3-5-haiku-latest": [
         ["Input", "$0.80"],
         ["Output", "$4.00"]
+    ],
+    "deepseek-r1": [
+        ["Input", "$0 (runs locally)"],
+        ["Output", "$0 (runs locally)"]
+    ],
+    "llama3.3": [
+        ["Input", "$0 (runs locally)"],
+        ["Output", "$0 (runs locally)"]
+    ],
+    "qwen2.5-coder": [
+        ["Input", "$0 (runs locally)"],
+        ["Output", "$0 (runs locally)"]
+    ],
+    "mistral": [
+        ["Input", "$0 (runs locally)"],
+        ["Output", "$0 (runs locally)"]
     ]
 }
 
@@ -277,21 +472,13 @@ def fetch_openai_models():
             if not any(m["id"] == claude_model["id"] for m in available):
                 available.append(claude_model)
 
-        # Always add Llama 3 (Ollama) as an option
-        if not any(m["id"] == "llama3" for m in available):
-            llama3_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "llama3"), None)
-            if llama3_meta:
-                available.append(llama3_meta)
-        # Always add Gemma (Ollama) as an option
-        if not any(m["id"] == "gemma" for m in available):
-            gemma_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "gemma"), None)
-            if gemma_meta:
-                available.append(gemma_meta)
-        # Always add DeepSeek (Ollama) as an option
-        if not any(m["id"] == "deepseek-r1" for m in available):
-            deepseek_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == "deepseek-r1"), None)
-            if deepseek_meta:
-                available.append(deepseek_meta)
+        # Always add local Ollama models as options
+        ollama_models = ["llama3.3", "deepseek-r1", "qwen2.5-coder", "mistral"]
+        for ollama_id in ollama_models:
+            if not any(m["id"] == ollama_id for m in available):
+                ollama_meta = next((m for m in DEFAULT_MODEL_OPTIONS if m["id"] == ollama_id), None)
+                if ollama_meta:
+                    available.append(ollama_meta)
         return available
     except Exception as e:
         st.warning(f"Could not fetch models from OpenAI: {e}")
@@ -306,6 +493,25 @@ if "available_models" not in st.session_state:
 
 # Model selection UI
 st.sidebar.header("Model Management")
+
+# Whisper settings in sidebar
+st.sidebar.markdown("---")
+st.sidebar.header("🎤 Voice Transcription Settings")
+use_local = st.sidebar.checkbox(
+    "Use Local Whisper Base (FREE)",
+    value=st.session_state.use_local_whisper,
+    help="Enable to use free local Whisper Base model. Disable to use OpenAI API ($0.006/minute)"
+)
+if use_local != st.session_state.use_local_whisper:
+    st.session_state.use_local_whisper = use_local
+    st.rerun()
+
+if st.session_state.use_local_whisper:
+    st.sidebar.info("💰 **Cost:** FREE (runs locally)\n📊 **Model:** Whisper Base\n🌍 **Languages:** 99 supported")
+else:
+    st.sidebar.info("💰 **Cost:** $0.006 per minute\n📊 **Model:** OpenAI Whisper-1\n🌍 **Languages:** Auto-detect")
+
+st.sidebar.markdown("---")
 model_names = [m["name"] for m in st.session_state["available_models"]]
 def_model = DEFAULT_MODEL_OPTIONS[0]["name"]
 selected_model_name = st.sidebar.selectbox("Choose a model", model_names, index=model_names.index(def_model) if def_model in model_names else 0)
@@ -396,15 +602,24 @@ if uploaded_file is not None:
 # --- End of File Uploader and Processing ---
 
 
-# Button to submit the question
-if st.button("Ask"):
+# Button to submit the question (or auto-submit in voice mode)
+ask_clicked = False
+if not st.session_state.voice_mode:
+    ask_clicked = st.button("Ask")
+else:
+    # In voice mode, automatically process if there's input
+    if user_input.strip():
+        ask_clicked = True
+        st.info("🤖 Processing your voice input automatically...")
+
+if ask_clicked:
     # Check if there is any text input OR if any file content (text or image base64) has been processed
     if user_input.strip() or file_content or image_base64_data:
         with st.spinner('Processing...'):
             try:
                 # --- Start of Prompt Construction and API Call Logic ---
                 # Check if the selected model is an Ollama model, Claude model, or an OpenAI model
-                if not (selected_model["id"] in ["llama3", "gemma", "deepseek-r1"]):
+                if not (selected_model["id"] in ["llama3.3", "deepseek-r1", "qwen2.5-coder", "mistral"]):
                     # --- OpenAI Model Path ---
                     messages_payload = [
                         {"role": "system", "content": SYSTEM_MESSAGE},
@@ -459,7 +674,7 @@ if st.button("Ask"):
                     messages_payload[0]["content"] = current_content_parts
 
                 # --- Model Execution Logic ---
-                if selected_model["id"] in ["llama3", "gemma", "deepseek-r1"]:
+                if selected_model["id"] in ["llama3.3", "deepseek-r1", "qwen2.5-coder", "mistral"]:
                     # --- Ollama Model Path ---
                     import subprocess  # For running Ollama CLI
                     ollama_model_tag = f"{selected_model['id']}:latest"
@@ -510,9 +725,96 @@ if st.button("Ask"):
                     if output_text:
                         st.subheader("Model Response:")
                         st.write(output_text)
+
+                        # Add text-to-speech for the response
+                        st.markdown("### 🔊 Voice Output")
+
+                        # TTS component with built-in controls
+                        tts_html = f"""
+                        <div id="tts-container" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
+                            <style>
+                                .tts-button {{
+                                    background-color: #ff4b4b;
+                                    color: white;
+                                    border: none;
+                                    padding: 10px 20px;
+                                    font-size: 16px;
+                                    border-radius: 5px;
+                                    cursor: pointer;
+                                    margin-right: 10px;
+                                    transition: all 0.3s;
+                                }}
+                                .tts-button:hover {{
+                                    background-color: #ff3333;
+                                }}
+                                .tts-button:disabled {{
+                                    background-color: #cccccc;
+                                    cursor: not-allowed;
+                                }}
+                                #tts-status {{
+                                    margin-top: 10px;
+                                    font-size: 14px;
+                                }}
+                            </style>
+                            <button class="tts-button" id="speakBtn" onclick="speakText()">🔊 Read Response</button>
+                            <button class="tts-button" id="stopBtn" onclick="stopSpeaking()" disabled>⏹️ Stop Reading</button>
+                            <div id="tts-status">Ready to speak</div>
+                            <script>
+                                function speakText() {{
+                                    if ('speechSynthesis' in window) {{
+                                        // Cancel any ongoing speech
+                                        window.speechSynthesis.cancel();
+
+                                        const text = `{output_text.replace('`', '\\`').replace('\n', ' ').replace('$', '\\$')}`;
+                                        const utterance = new SpeechSynthesisUtterance(text);
+
+                                        utterance.rate = 0.9;
+                                        utterance.pitch = 1;
+                                        utterance.volume = 1;
+
+                                        utterance.onstart = function() {{
+                                            document.getElementById('tts-status').innerHTML = '🔊 Speaking...';
+                                            document.getElementById('tts-status').style.color = 'green';
+                                            document.getElementById('speakBtn').disabled = true;
+                                            document.getElementById('stopBtn').disabled = false;
+                                        }};
+
+                                        utterance.onend = function() {{
+                                            document.getElementById('tts-status').innerHTML = '✅ Finished speaking';
+                                            document.getElementById('tts-status').style.color = 'gray';
+                                            document.getElementById('speakBtn').disabled = false;
+                                            document.getElementById('stopBtn').disabled = true;
+                                        }};
+
+                                        utterance.onerror = function(event) {{
+                                            document.getElementById('tts-status').innerHTML = '❌ Error: ' + event.error;
+                                            document.getElementById('tts-status').style.color = 'red';
+                                            document.getElementById('speakBtn').disabled = false;
+                                            document.getElementById('stopBtn').disabled = true;
+                                        }};
+
+                                        window.speechSynthesis.speak(utterance);
+                                    }} else {{
+                                        document.getElementById('tts-status').innerHTML = '❌ Text-to-speech not supported';
+                                    }}
+                                }}
+
+                                function stopSpeaking() {{
+                                    if ('speechSynthesis' in window) {{
+                                        window.speechSynthesis.cancel();
+                                        document.getElementById('tts-status').innerHTML = '⏹️ Speaking stopped';
+                                        document.getElementById('tts-status').style.color = 'orange';
+                                        document.getElementById('speakBtn').disabled = false;
+                                        document.getElementById('stopBtn').disabled = true;
+                                    }}
+                                }}
+                            </script>
+                        </div>
+                        """
+                        components.html(tts_html, height=120)
                     else:
                         st.write("Sorry, no response from the model.")
-                elif selected_model["id"] in ["claude-3-5-haiku-latest", "claude-sonnet-4-20250514"]:
+                elif selected_model["id"] in ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest", "claude-sonnet-4-20250514"]:
                     # --- Claude Model API Call ---
                     # Build messages for Anthropic API
                     messages = []
@@ -564,6 +866,93 @@ if st.button("Ask"):
                     if output_text:
                         st.subheader("Model Response:")
                         st.write(output_text)
+
+                        # Add text-to-speech for the response
+                        st.markdown("### 🔊 Voice Output")
+
+                        # TTS component with built-in controls
+                        tts_html = f"""
+                        <div id="tts-container-claude" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
+                            <style>
+                                .tts-button {{
+                                    background-color: #ff4b4b;
+                                    color: white;
+                                    border: none;
+                                    padding: 10px 20px;
+                                    font-size: 16px;
+                                    border-radius: 5px;
+                                    cursor: pointer;
+                                    margin-right: 10px;
+                                    transition: all 0.3s;
+                                }}
+                                .tts-button:hover {{
+                                    background-color: #ff3333;
+                                }}
+                                .tts-button:disabled {{
+                                    background-color: #cccccc;
+                                    cursor: not-allowed;
+                                }}
+                                #tts-status-claude {{
+                                    margin-top: 10px;
+                                    font-size: 14px;
+                                }}
+                            </style>
+                            <button class="tts-button" id="speakBtnClaude" onclick="speakTextClaude()">🔊 Read Response</button>
+                            <button class="tts-button" id="stopBtnClaude" onclick="stopSpeakingClaude()" disabled>⏹️ Stop Reading</button>
+                            <div id="tts-status-claude">Ready to speak</div>
+                            <script>
+                                function speakTextClaude() {{
+                                    if ('speechSynthesis' in window) {{
+                                        // Cancel any ongoing speech
+                                        window.speechSynthesis.cancel();
+
+                                        const text = `{output_text.replace('`', '\\`').replace('\n', ' ').replace('$', '\\$')}`;
+                                        const utterance = new SpeechSynthesisUtterance(text);
+
+                                        utterance.rate = 0.9;
+                                        utterance.pitch = 1;
+                                        utterance.volume = 1;
+
+                                        utterance.onstart = function() {{
+                                            document.getElementById('tts-status-claude').innerHTML = '🔊 Speaking...';
+                                            document.getElementById('tts-status-claude').style.color = 'green';
+                                            document.getElementById('speakBtnClaude').disabled = true;
+                                            document.getElementById('stopBtnClaude').disabled = false;
+                                        }};
+
+                                        utterance.onend = function() {{
+                                            document.getElementById('tts-status-claude').innerHTML = '✅ Finished speaking';
+                                            document.getElementById('tts-status-claude').style.color = 'gray';
+                                            document.getElementById('speakBtnClaude').disabled = false;
+                                            document.getElementById('stopBtnClaude').disabled = true;
+                                        }};
+
+                                        utterance.onerror = function(event) {{
+                                            document.getElementById('tts-status-claude').innerHTML = '❌ Error: ' + event.error;
+                                            document.getElementById('tts-status-claude').style.color = 'red';
+                                            document.getElementById('speakBtnClaude').disabled = false;
+                                            document.getElementById('stopBtnClaude').disabled = true;
+                                        }};
+
+                                        window.speechSynthesis.speak(utterance);
+                                    }} else {{
+                                        document.getElementById('tts-status-claude').innerHTML = '❌ Text-to-speech not supported';
+                                    }}
+                                }}
+
+                                function stopSpeakingClaude() {{
+                                    if ('speechSynthesis' in window) {{
+                                        window.speechSynthesis.cancel();
+                                        document.getElementById('tts-status-claude').innerHTML = '⏹️ Speaking stopped';
+                                        document.getElementById('tts-status-claude').style.color = 'orange';
+                                        document.getElementById('speakBtnClaude').disabled = false;
+                                        document.getElementById('stopBtnClaude').disabled = true;
+                                    }}
+                                }}
+                            </script>
+                        </div>
+                        """
+                        components.html(tts_html, height=120)
                     else:
                         st.write("Sorry, no response from the model.")
                 else:
@@ -611,6 +1000,93 @@ if st.button("Ask"):
                             output_text = str(response.output)
                         st.subheader("Model Response:")
                         st.write(output_text)
+
+                        # Add text-to-speech for the response
+                        st.markdown("### 🔊 Voice Output")
+
+                        # TTS component with built-in controls
+                        tts_html = f"""
+                        <div id="tts-container-openai" style="padding: 10px; background-color: #f0f2f6; border-radius: 8px;">
+                            <style>
+                                .tts-button {{
+                                    background-color: #ff4b4b;
+                                    color: white;
+                                    border: none;
+                                    padding: 10px 20px;
+                                    font-size: 16px;
+                                    border-radius: 5px;
+                                    cursor: pointer;
+                                    margin-right: 10px;
+                                    transition: all 0.3s;
+                                }}
+                                .tts-button:hover {{
+                                    background-color: #ff3333;
+                                }}
+                                .tts-button:disabled {{
+                                    background-color: #cccccc;
+                                    cursor: not-allowed;
+                                }}
+                                #tts-status-openai {{
+                                    margin-top: 10px;
+                                    font-size: 14px;
+                                }}
+                            </style>
+                            <button class="tts-button" id="speakBtnOpenAI" onclick="speakTextOpenAI()">🔊 Read Response</button>
+                            <button class="tts-button" id="stopBtnOpenAI" onclick="stopSpeakingOpenAI()" disabled>⏹️ Stop Reading</button>
+                            <div id="tts-status-openai">Ready to speak</div>
+                            <script>
+                                function speakTextOpenAI() {{
+                                    if ('speechSynthesis' in window) {{
+                                        // Cancel any ongoing speech
+                                        window.speechSynthesis.cancel();
+
+                                        const text = `{output_text.replace('`', '\\`').replace('\n', ' ').replace('$', '\\$')}`;
+                                        const utterance = new SpeechSynthesisUtterance(text);
+
+                                        utterance.rate = 0.9;
+                                        utterance.pitch = 1;
+                                        utterance.volume = 1;
+
+                                        utterance.onstart = function() {{
+                                            document.getElementById('tts-status-openai').innerHTML = '🔊 Speaking...';
+                                            document.getElementById('tts-status-openai').style.color = 'green';
+                                            document.getElementById('speakBtnOpenAI').disabled = true;
+                                            document.getElementById('stopBtnOpenAI').disabled = false;
+                                        }};
+
+                                        utterance.onend = function() {{
+                                            document.getElementById('tts-status-openai').innerHTML = '✅ Finished speaking';
+                                            document.getElementById('tts-status-openai').style.color = 'gray';
+                                            document.getElementById('speakBtnOpenAI').disabled = false;
+                                            document.getElementById('stopBtnOpenAI').disabled = true;
+                                        }};
+
+                                        utterance.onerror = function(event) {{
+                                            document.getElementById('tts-status-openai').innerHTML = '❌ Error: ' + event.error;
+                                            document.getElementById('tts-status-openai').style.color = 'red';
+                                            document.getElementById('speakBtnOpenAI').disabled = false;
+                                            document.getElementById('stopBtnOpenAI').disabled = true;
+                                        }};
+
+                                        window.speechSynthesis.speak(utterance);
+                                    }} else {{
+                                        document.getElementById('tts-status-openai').innerHTML = '❌ Text-to-speech not supported';
+                                    }}
+                                }}
+
+                                function stopSpeakingOpenAI() {{
+                                    if ('speechSynthesis' in window) {{
+                                        window.speechSynthesis.cancel();
+                                        document.getElementById('tts-status-openai').innerHTML = '⏹️ Speaking stopped';
+                                        document.getElementById('tts-status-openai').style.color = 'orange';
+                                        document.getElementById('speakBtnOpenAI').disabled = false;
+                                        document.getElementById('stopBtnOpenAI').disabled = true;
+                                    }}
+                                }}
+                            </script>
+                        </div>
+                        """
+                        components.html(tts_html, height=120)
                     else:
                         st.write("Sorry, no response from the model.")
             except Exception as e:
