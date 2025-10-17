@@ -6,6 +6,13 @@ import os
 import base64
 import streamlit.components.v1 as components
 import tempfile
+import warnings
+
+# Suppress urllib3 NotOpenSSLWarning
+warnings.filterwarnings("ignore", category=Warning, message=".*urllib3 v2 only supports OpenSSL.*")
+
+# Suppress Whisper deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*return_token_timestamps.*")
 
 # Force Streamlit to run on port 8502
 os.environ["STREAMLIT_SERVER_PORT"] = "8502"
@@ -75,12 +82,6 @@ def load_whisper_model():
     """Load Whisper Base model for local transcription"""
     import torch
     from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-    import warnings
-
-    # Suppress common warnings during Whisper model loading
-    warnings.filterwarnings("ignore", category=UserWarning, message=".*urllib3.*")
-    warnings.filterwarnings("ignore", category=UserWarning, message=".*NotOpenSSLWarning.*")
-    warnings.filterwarnings("ignore", category=FutureWarning, message=".*return_token_timestamps.*")
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if torch.cuda.is_available() else torch.float32
