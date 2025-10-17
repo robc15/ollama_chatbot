@@ -3,6 +3,7 @@ openai>=1.93.1
 anthropic>=0.57.1
 PyPDF2>=3.0.1
 Pillow>=8.0.0
+numpy<2
 transformers>=4.20.0
 datasets[audio]>=2.0.0
 torch>=1.11.0
