@@ -77,8 +77,10 @@ def load_whisper_model():
     from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
     import warnings
 
-    # Suppress urllib3 OpenSSL warning
-    warnings.filterwarnings("ignore", message=".*urllib3.*")
+    # Suppress common warnings during Whisper model loading
+    warnings.filterwarnings("ignore", category=UserWarning, message=".*urllib3.*")
+    warnings.filterwarnings("ignore", category=UserWarning, message=".*NotOpenSSLWarning.*")
+    warnings.filterwarnings("ignore", category=FutureWarning, message=".*return_token_timestamps.*")
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if torch.cuda.is_available() else torch.float32
@@ -86,7 +88,7 @@ def load_whisper_model():
     model_id = "openai/whisper-base"
 
     model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_id, torch_dtype=dtype, low_cpu_mem_usage=True
+        model_id, dtype=dtype, low_cpu_mem_usage=True
     )
     model.to(device)
     processor = AutoProcessor.from_pretrained(model_id)
@@ -96,7 +98,6 @@ def load_whisper_model():
         model=model,
         tokenizer=processor.tokenizer,
         feature_extractor=processor.feature_extractor,
-        torch_dtype=dtype,
         device=device,
         generate_kwargs={"language": "en", "task": "transcribe"}
     )
